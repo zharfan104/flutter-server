@@ -1,0 +1,12 @@
+[Unit]
+Description=Flutter Development Environment
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/start-flutter-env.sh
+RemainAfterExit=yes
+User=root
+
+[Install]
+WantedBy=multi-user.target
