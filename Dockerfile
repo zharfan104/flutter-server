@@ -25,14 +25,14 @@ WORKDIR /app
 # Copy the Flutter server file
 COPY flutter_server.py /app/flutter_server.py
 
-# Create nginx log directories and files
+# Create nginx log directories and files with proper permissions
 RUN mkdir -p /var/log/nginx && \
     touch /var/log/nginx/access.log && \
     touch /var/log/nginx/error.log && \
     chown -R www-data:www-data /var/log/nginx && \
+    chmod 755 /var/log/nginx && \
     chmod 644 /var/log/nginx/access.log && \
     chmod 644 /var/log/nginx/error.log
-
 
 # Create nginx configuration
 RUN echo 'server {\n\
@@ -85,6 +85,9 @@ RUN echo 'server {\n\
     }\n\
 }' > /etc/nginx/sites-available/default
 
+# Test nginx configuration
+RUN nginx -t
+
 # Create supervisor config to run both nginx and flask
 RUN echo '[supervisord]\n\
 nodaemon=true\n\
@@ -97,6 +100,7 @@ stdout_logfile=/dev/stdout\n\
 stdout_logfile_maxbytes=0\n\
 stderr_logfile=/dev/stderr\n\
 stderr_logfile_maxbytes=0\n\
+user=root\n\
 \n\
 [program:flask]\n\
 command=python3 /app/flutter_server.py\n\
