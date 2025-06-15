@@ -89,7 +89,7 @@ RUN echo '[supervisord]\n\
 nodaemon=true\n\
 \n\
 [program:nginx]\n\
-command=/bin/bash -c "touch /var/log/nginx/access.log /var/log/nginx/error.log && chown www-data:www-data /var/log/nginx/access.log /var/log/nginx/error.log && chmod 644 /var/log/nginx/access.log /var/log/nginx/error.log && /usr/sbin/nginx -g '\''daemon off;'\''"\n\
+command=/bin/bash -c "mkdir -p /var/log/nginx && touch /var/log/nginx/access.log /var/log/nginx/error.log && chown -R www-data:www-data /var/log/nginx && chmod 755 /var/log/nginx && chmod 644 /var/log/nginx/access.log /var/log/nginx/error.log && /usr/sbin/nginx -g '\''daemon off;'\''"\n\
 autostart=true\n\
 autorestart=true\n\
 stdout_logfile=/dev/stdout\n\
