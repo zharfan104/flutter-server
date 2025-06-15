@@ -12,7 +12,7 @@ CORS(app)
 class FlutterManager:
     def __init__(self):
         self.flutter_process = None
-        self.project_path = "/app/myapp"
+        self.project_path = "/home/flutter/project"
         self.output_buffer = []
         self.is_running = False
         self.ready = False
