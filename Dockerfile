@@ -1,92 +1,106 @@
-# Flutter Development Environment Docker Image
+# Dockerfile - Single Port Solution
 FROM ubuntu:22.04
 
-# Set non-interactive mode for apt-get
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install essential packages
-RUN apt-get update && apt-get upgrade -y && \
-    apt-get install -y \
-        curl \
-        git \
-        unzip \
-        xz-utils \
-        nginx \
-        python3 \
-        python3-pip \
-        python3-venv \
-        build-essential \
-        libssl-dev \
-        libffi-dev \
-        python3-dev \
-        wget \
-        sudo && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+# Install dependencies including nginx
+RUN apt-get update && apt-get install -y \
+    curl git unzip xz-utils zip libglu1-mesa \
+    python3 python3-pip \
+    nginx \
+    supervisor \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Flutter
-RUN cd /opt && \
-    wget -q https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.16.0-stable.tar.xz && \
-    tar xf flutter_linux_3.16.0-stable.tar.xz && \
-    rm flutter_linux_3.16.0-stable.tar.xz && \
-    chown -R root:root /opt/flutter && \
-    chmod -R 755 /opt/flutter
+RUN git clone https://github.com/flutter/flutter.git /flutter -b stable --depth 1
+ENV PATH="/flutter/bin:${PATH}"
+RUN flutter doctor
+RUN flutter config --enable-web
 
-# Add Flutter to PATH
-ENV PATH="/opt/flutter/bin:$PATH"
+# Install Python dependencies
+RUN pip3 install flask flask-cors requests
 
-# Fix Git safe directory issue
-RUN git config --global --add safe.directory /opt/flutter
+WORKDIR /app
 
-# Disable Flutter analytics and pre-cache
-RUN flutter config --no-analytics && \
-    flutter config --no-cli-animations && \
-    flutter precache --web && \
-    flutter doctor || true
+# Copy the Flutter server file
+COPY flutter_server.py /app/flutter_server.py
 
-# Install Python packages
-RUN pip3 install flask gunicorn requests flask-cors
+# Create nginx configuration
+RUN echo 'server {\n\
+    listen 80 default_server;\n\
+    listen [::]:80 default_server;\n\
+    \n\
+    # Enable error logging\n\
+    error_log /var/log/nginx/error.log debug;\n\
+    access_log /var/log/nginx/access.log;\n\
+    \n\
+    # API routes go to Flask\n\
+    location /api {\n\
+        proxy_pass http://127.0.0.1:5000;\n\
+        proxy_set_header Host $host;\n\
+        proxy_set_header X-Real-IP $remote_addr;\n\
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n\
+        proxy_set_header X-Forwarded-Proto $scheme;\n\
+    }\n\
+    \n\
+    # Flutter web assets (accessed from iframe) - catch all static files\n\
+    location ~ ^/(.*\.js|.*\.js\.map|.*\.css|.*\.png|.*\.jpg|.*\.jpeg|.*\.gif|.*\.svg|.*\.woff|.*\.woff2|.*\.ttf|canvaskit/.*|assets/.*|manifest\.json|favicon\.ico|favicon\.png|icons/.*) {\n\
+        proxy_pass http://127.0.0.1:8080;\n\
+        proxy_http_version 1.1;\n\
+        proxy_set_header Host $host;\n\
+        proxy_set_header X-Real-IP $remote_addr;\n\
+        proxy_cache_bypass $http_upgrade;\n\
+        add_header Cache-Control "no-cache, no-store, must-revalidate";\n\
+        add_header Pragma "no-cache";\n\
+        add_header Expires "0";\n\
+    }\n\
+    \n\
+    # Flutter app routes - simplified\n\
+    location /app {\n\
+        proxy_pass http://127.0.0.1:8080/;\n\
+        proxy_http_version 1.1;\n\
+        proxy_set_header Host $host;\n\
+        proxy_set_header X-Real-IP $remote_addr;\n\
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n\
+        proxy_set_header X-Forwarded-Proto $scheme;\n\
+        proxy_read_timeout 60s;\n\
+        proxy_connect_timeout 60s;\n\
+        proxy_send_timeout 60s;\n\
+    }\n\
+    \n\
+    # Root goes to Flask landing page\n\
+    location / {\n\
+        proxy_pass http://127.0.0.1:5000;\n\
+        proxy_set_header Host $host;\n\
+        proxy_set_header X-Real-IP $remote_addr;\n\
+    }\n\
+}' > /etc/nginx/sites-available/default
 
-# Create Flutter user and directories
-RUN useradd -m -s /bin/bash flutter && \
-    mkdir -p /home/flutter/project && \
-    chown -R flutter:flutter /home/flutter && \
-    chown -R flutter:flutter /opt/flutter
+# Create supervisor config to run both nginx and flask
+RUN echo '[supervisord]\n\
+nodaemon=true\n\
+\n\
+[program:nginx]\n\
+command=/usr/sbin/nginx -g "daemon off;"\n\
+autostart=true\n\
+autorestart=true\n\
+stdout_logfile=/dev/stdout\n\
+stdout_logfile_maxbytes=0\n\
+stderr_logfile=/dev/stderr\n\
+stderr_logfile_maxbytes=0\n\
+\n\
+[program:flask]\n\
+command=python3 /app/flutter_server.py\n\
+directory=/app\n\
+autostart=true\n\
+autorestart=true\n\
+stdout_logfile=/dev/stdout\n\
+stdout_logfile_maxbytes=0\n\
+stderr_logfile=/dev/stderr\n\
+stderr_logfile_maxbytes=0' > /etc/supervisor/conf.d/flutter-app.conf
 
-# Switch to flutter user and setup git config
-USER flutter
-WORKDIR /home/flutter
+# Only expose port 80
+EXPOSE 80
 
-# Fix git config for flutter user, disable analytics, and create project
-RUN git config --global --add safe.directory /opt/flutter && \
-    flutter --disable-analytics && \
-    flutter config --no-analytics && \
-    flutter create --platforms=web project
-WORKDIR /home/flutter/project
-RUN flutter pub get
-
-# Switch back to root for service configuration
-USER root
-
-# Configure nginx
-COPY nginx.conf /etc/nginx/sites-available/flutter
-RUN rm -f /etc/nginx/sites-enabled/default && \
-    ln -sf /etc/nginx/sites-available/flutter /etc/nginx/sites-enabled/ && \
-    nginx -t
-
-# Create Flask app
-COPY app.py /home/flutter/project/app.py
-RUN chown flutter:flutter /home/flutter/project/app.py
-
-# Create startup script
-COPY start-flutter-env.sh /usr/local/bin/start-flutter-env.sh
-RUN sed -i 's/\r$//' /usr/local/bin/start-flutter-env.sh && \
-    chmod +x /usr/local/bin/start-flutter-env.sh && \
-    echo "✅ Startup script fixed and ready" && \
-    head -3 /usr/local/bin/start-flutter-env.sh
-
-# Expose ports
-EXPOSE 80 5000
-
-# Set startup command
-CMD ["/usr/local/bin/start-flutter-env.sh"]
+# Start supervisor
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/flutter-app.conf"]
