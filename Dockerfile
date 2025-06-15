@@ -25,6 +25,15 @@ WORKDIR /app
 # Copy the Flutter server file
 COPY flutter_server.py /app/flutter_server.py
 
+# Create nginx log directories and files
+RUN mkdir -p /var/log/nginx && \
+    touch /var/log/nginx/access.log && \
+    touch /var/log/nginx/error.log && \
+    chown -R www-data:www-data /var/log/nginx && \
+    chmod 644 /var/log/nginx/access.log && \
+    chmod 644 /var/log/nginx/error.log
+
+
 # Create nginx configuration
 RUN echo 'server {\n\
     listen 80 default_server;\n\
