@@ -35,7 +35,8 @@ class FlutterManager:
             "flutter", "run", "-d", "web-server",
             "--web-port=8080",
             "--web-hostname=0.0.0.0",  # Listen on all interfaces so nginx can proxy
-            "--dart-define=FLUTTER_WEB_USE_SKIA=true"
+            "--dart-define=FLUTTER_WEB_USE_SKIA=true",
+            "--web-experimental-hot-reload"
         ]
         
         print(f"Starting Flutter with command: {' '.join(cmd)}")
