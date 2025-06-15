@@ -1,0 +1,21 @@
+# Cloud Build configuration for Flutter Docker image
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  script: |
+    docker build -t ${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/flutter-dev-env:latest .
+  automapSubstitutions: true
+
+images:
+- '${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/flutter-dev-env:latest'
+
+# Substitutions
+substitutions:
+  _LOCATION: 'us-west2'
+  _REPOSITORY: 'flutter-images'
+
+# Build options
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+# Timeout
+timeout: '1200s'
