@@ -21,8 +21,10 @@ class FlutterManager:
         """Create Flutter project if it doesn't exist"""
         if not os.path.exists(self.project_path):
             print("Creating Flutter project...")
-            subprocess.run(["flutter", "create", "myapp"], cwd="/app", check=True)
+            subprocess.run(["flutter", "create", "project"], cwd="/home/flutter", check=True)
             print("Flutter project created!")
+        else:
+            print("Flutter project already exists at", self.project_path)
     
     def start_flutter(self):
         """Start Flutter web server"""
