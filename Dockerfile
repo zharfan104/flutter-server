@@ -45,7 +45,7 @@ RUN flutter config --no-analytics && \
     flutter doctor || true
 
 # Install Python packages
-RUN pip3 install flask gunicorn requests
+RUN pip3 install flask gunicorn requests flask-cors
 
 # Create Flutter user and directories
 RUN useradd -m -s /bin/bash flutter && \
