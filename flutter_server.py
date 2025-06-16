@@ -12,31 +12,67 @@ CORS(app)
 class FlutterManager:
     def __init__(self):
         self.flutter_process = None
-        self.project_path = "/app/myapp"
+        self.project_path = "/app/project"
         self.output_buffer = []
         self.is_running = False
         self.ready = False
+        self.repo_url = os.environ.get('REPO_URL')
+        self.github_token = os.environ.get('GITHUB_TOKEN')
         
-    def create_project(self):
-        """Create Flutter project if it doesn't exist"""
-        if not os.path.exists(self.project_path):
-            print("Creating Flutter project...")
-            subprocess.run(["flutter", "create", "myapp"], cwd="/app", check=True)
-            print("Flutter project created!")
+    def setup_project(self):
+        """Clone repository or create Flutter project if no repo URL"""
+        if self.repo_url:
+            print(f"Cloning repository: {self.repo_url}")
+            if not os.path.exists(self.project_path):
+                # Clone with token if provided
+                if self.github_token:
+                    # Insert token into URL
+                    auth_url = self.repo_url.replace('https://', f'https://{self.github_token}@')
+                    subprocess.run(["git", "clone", auth_url, "project"], cwd="/app", check=True)
+                else:
+                    subprocess.run(["git", "clone", self.repo_url, "project"], cwd="/app", check=True)
+                print("Repository cloned!")
+            else:
+                print("Repository already exists")
+        else:
+            # Fallback to creating generic Flutter project
+            if not os.path.exists(self.project_path):
+                print("Creating generic Flutter project...")
+                subprocess.run(["flutter", "create", "project"], cwd="/app", check=True)
+                print("Flutter project created!")
+    
+    def git_pull(self):
+        """Pull latest changes from repository"""
+        if not self.repo_url:
+            return {"error": "No repository configured"}
+        
+        try:
+            print("Pulling latest changes...")
+            result = subprocess.run(
+                ["git", "pull", "origin", "main"], 
+                cwd=self.project_path, 
+                capture_output=True, 
+                text=True, 
+                check=True
+            )
+            print(f"Git pull output: {result.stdout}")
+            return {"status": "success", "output": result.stdout}
+        except subprocess.CalledProcessError as e:
+            print(f"Git pull failed: {e.stderr}")
+            return {"error": f"Git pull failed: {e.stderr}"}
     
     def start_flutter(self):
         """Start Flutter web server"""
         if self.flutter_process:
             return {"error": "Flutter already running"}
         
-        self.create_project()
+        self.setup_project()
         
         cmd = [
             "flutter", "run", "-d", "web-server",
             "--web-port=8080",
             "--web-hostname=0.0.0.0",  # Listen on all interfaces so nginx can proxy
             "--dart-define=FLUTTER_WEB_USE_SKIA=true",
-            "--web-experimental-hot-reload"
         ]
         
         print(f"Starting Flutter with command: {' '.join(cmd)}")
@@ -205,6 +241,22 @@ def get_logs():
         "ready": flutter_manager.ready,
         "process_alive": flutter_manager.flutter_process.poll() is None if flutter_manager.flutter_process else False
     })
+
+@app.route('/api/git-pull', methods=['POST'])
+def git_pull_and_reload():
+    """Pull latest changes and trigger hot reload"""
+    result = flutter_manager.git_pull()
+    
+    if result.get("error"):
+        return jsonify(result), 400
+    
+    # Auto hot reload after successful pull if Flutter is running
+    if flutter_manager.is_running:
+        time.sleep(0.5)  # Give git pull time to complete
+        reload_result = flutter_manager.hot_reload()
+        result['hot_reload'] = reload_result
+    
+    return jsonify(result)
 
 @app.route('/api/file/<path:file_path>', methods=['GET'])
 def get_file(file_path):
