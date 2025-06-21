@@ -463,6 +463,11 @@ class ChatManager {
                 const lastMessage = newMessages[newMessages.length - 1];
                 if (lastMessage && lastMessage.role === 'assistant') {
                     this.hideProcessingIndicator();
+                    
+                    // Check if the message indicates code changes were made
+                    if (this.messageIndicatesCodeChanges(lastMessage.content)) {
+                        this.triggerFlutterReload();
+                    }
                 }
                 
                 // Update conversations list to reflect new activity
@@ -480,6 +485,48 @@ class ChatManager {
         }, 100);
     }
     
+    messageIndicatesCodeChanges(content) {
+        // Check if the assistant message indicates that code was modified
+        const codeChangeIndicators = [
+            '🎉 I\'ve successfully implemented',
+            'Changes Made:',
+            'Modified Files:',
+            'Created Files:',
+            'Hot reload was automatically triggered',
+            '✅ Code Analysis',
+            '🔧 Error Fixing',
+            'Pipeline completed'
+        ];
+        
+        return codeChangeIndicators.some(indicator => content.includes(indicator));
+    }
+    
+    triggerFlutterReload() {
+        console.log('Code changes detected - refreshing Flutter app...');
+        
+        // Method 1: Refresh the Flutter iframe
+        const flutterFrame = document.getElementById('flutter-frame');
+        if (flutterFrame) {
+            // Add a small delay to ensure backend changes are applied
+            setTimeout(() => {
+                flutterFrame.src = flutterFrame.src;
+                this.showToast('Flutter app refreshed due to code changes', 'info');
+            }, 1000);
+        }
+        
+        // Method 2: Try to trigger hot reload via API (as backup)
+        setTimeout(() => {
+            fetch('/api/hot-reload', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            }).catch(error => {
+                console.log('Hot reload API call failed (this is normal):', error);
+            });
+        }, 500);
+    }
+
     showToast(message, type = 'info') {
         // Use the global toast function if available
         if (window.flutterDevServer && window.flutterDevServer.showToast) {

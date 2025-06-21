@@ -34,6 +34,7 @@ class LogCategory(Enum):
     ERROR = "error"
     USER = "user"
     SYSTEM = "system"
+    FLUTTER = "flutter"
 
 
 @dataclass

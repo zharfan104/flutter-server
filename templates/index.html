@@ -327,8 +327,8 @@
                                             <small class="text-dark">CPU</small>
                                             <small id="cpu-percentage" class="text-primary fw-bold">0%</small>
                                         </div>
-                                        <div class="progress" style="height: 6px; background-color: #e9ecef;">
-                                            <div id="cpu-usage" class="progress-bar bg-primary" style="width: 0%"></div>
+                                        <div class="progress" style="height: 8px; background-color: #e9ecef; border-radius: 4px;">
+                                            <div id="cpu-usage" class="progress-bar bg-primary" role="progressbar" style="width: 0%; transition: width 0.3s ease;"></div>
                                         </div>
                                     </div>
                                     <div class="mb-2">
@@ -336,8 +336,8 @@
                                             <small class="text-dark">Memory</small>
                                             <small id="memory-percentage" class="text-warning fw-bold">0%</small>
                                         </div>
-                                        <div class="progress" style="height: 6px; background-color: #e9ecef;">
-                                            <div id="memory-usage" class="progress-bar bg-warning" style="width: 0%"></div>
+                                        <div class="progress" style="height: 8px; background-color: #e9ecef; border-radius: 4px;">
+                                            <div id="memory-usage" class="progress-bar bg-warning" role="progressbar" style="width: 0%; transition: width 0.3s ease;"></div>
                                         </div>
                                     </div>
                                 </div>
@@ -467,80 +467,163 @@
     font-size: 0.75rem;
 }
 
+/* Terminal-style log entries - FIXED VERSION */
 .logs-container .log-entry {
-    padding: 6px 8px;
-    margin-bottom: 3px;
-    border-radius: 4px;
+    padding: 3px 8px;
+    margin-bottom: 1px;
+    border-radius: 0;
     line-height: 1.4;
-    color: #212529;
+    color: #212529 !important;
     word-wrap: break-word;
     border-left: 3px solid transparent;
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Courier New', monospace !important;
+    font-size: 0.75rem !important;
+    font-weight: 400;
+    display: block;
+    background: transparent;
+    border: none;
+    white-space: nowrap;
+    overflow-x: auto;
 }
 
 .logs-container .log-entry.log-error {
-    background: #fff5f5;
-    border-left-color: #dc3545;
-    color: #721c24;
+    border-left-color: #dc3545 !important;
+    color: #dc3545 !important;
 }
 
 .logs-container .log-entry.log-warn {
-    background: #fffbf0;
-    border-left-color: #ffc107;
-    color: #856404;
+    border-left-color: #ffc107 !important;
+    color: #ff8c00 !important;
 }
 
 .logs-container .log-entry.log-info {
-    background: #f0f9ff;
-    border-left-color: #17a2b8;
-    color: #0c5460;
+    border-left-color: #17a2b8 !important;
+    color: #17a2b8 !important;
 }
 
 .logs-container .log-entry.log-debug {
-    background: #f8f9fa;
-    border-left-color: #6c757d;
-    color: #495057;
+    border-left-color: #6c757d !important;
+    color: #6c757d !important;
 }
 
-.log-timestamp {
-    color: #6c757d;
-    font-weight: 500;
+/* All child elements should be inline and inherit color */
+.logs-container .log-entry * {
+    color: inherit !important;
+    font-family: inherit !important;
+    display: inline !important;
+    font-size: inherit !important;
+    line-height: inherit !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    vertical-align: baseline !important;
 }
 
-.progress-sm {
-    height: 6px;
-}
-
-.nav-tabs .nav-link {
-    font-size: 0.875rem;
-    padding: 8px 16px !important;
-    color: #495057 !important;
-    background-color: transparent !important;
-    border: none !important;
-    margin-right: 4px;
-    border-radius: 6px 6px 0 0;
-    transition: all 0.2s ease;
-}
-
-.nav-tabs .nav-link:hover {
-    color: #007bff !important;
-    background-color: #e9ecef !important;
-    transform: translateY(-1px);
-}
-
-.nav-tabs .nav-link.active {
+/* Specific spacing for badges */
+.logs-container .log-entry .badge {
+    margin-right: 4px !important;
+    padding: 2px 4px !important;
+    border-radius: 3px !important;
+    font-size: 0.65rem !important;
     font-weight: 600 !important;
-    color: #007bff !important;
-    background-color: #ffffff !important;
-    border-bottom: 2px solid #007bff !important;
-    box-shadow: 0 2px 4px rgba(0,123,255,0.1);
+    text-transform: uppercase !important;
+    display: inline !important;
 }
 
-.nav-tabs .nav-link i {
-    margin-right: 4px;
+/* Level badges - distinct colors for each level */
+.logs-container .log-entry.log-error .badge:first-of-type,
+.logs-container .log-entry .bg-danger {
+    background-color: #dc3545 !important;
+    color: #ffffff !important;
 }
 
-#monitoring-content.collapsed {
-    display: none;
+.logs-container .log-entry.log-warn .badge:first-of-type,
+.logs-container .log-entry .bg-warning {
+    background-color: #fd7e14 !important;
+    color: #ffffff !important;
+}
+
+.logs-container .log-entry.log-info .badge:first-of-type,
+.logs-container .log-entry .bg-info {
+    background-color: #0dcaf0 !important;
+    color: #000000 !important;
+}
+
+.logs-container .log-entry.log-debug .badge:first-of-type,
+.logs-container .log-entry .bg-secondary {
+    background-color: #6c757d !important;
+    color: #ffffff !important;
+}
+
+/* Category badges (FLUTTER, SYSTEM, etc.) - always dark background */
+.logs-container .log-entry .badge:not(:first-of-type),
+.logs-container .log-entry .badge.bg-secondary {
+    background-color: #495057 !important;
+    color: #ffffff !important;
+}
+
+/* Override monitoring content rules for badges specifically */
+#monitoring-content .logs-container .log-entry .badge {
+    color: #ffffff !important;
+}
+
+#monitoring-content .logs-container .log-entry.log-info .badge:first-of-type {
+    background-color: #0dcaf0 !important;
+    color: #000000 !important;
+}
+
+#monitoring-content .logs-container .log-entry .badge:not(:first-of-type) {
+    background-color: #495057 !important;
+    color: #ffffff !important;
+}
+
+/* Ensure all badges have proper contrast */
+.logs-container .log-entry .badge {
+    border: 1px solid rgba(0,0,0,0.1) !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1) !important;
+}
+
+/* Timestamp spacing */
+.logs-container .log-entry .log-timestamp {
+    margin-right: 6px !important;
+    color: #6c757d !important;
+    font-weight: 500 !important;
+}
+
+/* Category badge spacing */
+.logs-container .log-entry .badge + .badge {
+    margin-left: 2px !important;
+}
+
+/* Override monitoring content rules */
+#monitoring-content .logs-container .log-entry.log-error,
+#monitoring-content .logs-container .log-entry.log-error * {
+    color: #dc3545 !important;
+}
+
+#monitoring-content .logs-container .log-entry.log-warn,
+#monitoring-content .logs-container .log-entry.log-warn * {
+    color: #ff8c00 !important;
+}
+
+#monitoring-content .logs-container .log-entry.log-info,
+#monitoring-content .logs-container .log-entry.log-info * {
+    color: #17a2b8 !important;
+}
+
+#monitoring-content .logs-container .log-entry.log-debug,
+#monitoring-content .logs-container .log-entry.log-debug * {
+    color: #6c757d !important;
+}
+
+/* Badge colors override */
+#monitoring-content .logs-container .log-entry .badge {
+    color: #ffffff !important;
+    background-color: currentColor !important;
+}
+
+/* Hover effect */
+.logs-container .log-entry:hover {
+    background-color: rgba(0, 0, 0, 0.03) !important;
 }
 
 /* Chat-specific styles for the integrated view */

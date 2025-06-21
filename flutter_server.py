@@ -227,8 +227,7 @@ try:
     logger.configure(
         enable_console=True, 
         enable_file=True, 
-        log_file_path="logs/flutter_server.log",
-        max_log_entries=50000
+        log_file_path="logs/flutter_server.log"
     )
     
     # Start performance monitoring
@@ -277,14 +276,6 @@ try:
     from utils.performance_monitor import performance_monitor
     from utils.request_tracer import tracer
     from utils.error_analyzer import error_analyzer
-    
-    # Configure advanced logging
-    logger.configure(
-        enable_console=True,
-        enable_file=True,
-        log_file_path="logs/flutter_server.log",
-        enable_performance=True
-    )
     
     # Start performance monitoring
     performance_monitor.start_monitoring()
