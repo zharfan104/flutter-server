@@ -566,6 +566,10 @@ class ChatManager {
         // Method 1: Refresh the Flutter iframe
         const flutterFrame = document.getElementById('flutter-app');
         if (flutterFrame) {
+            // Show loading indicator if available
+            if (window.showFlutterLoading) {
+                window.showFlutterLoading();
+            }
             // Add a small delay to ensure backend changes are applied
             setTimeout(() => {
                 flutterFrame.src = flutterFrame.src;

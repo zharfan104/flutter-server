@@ -9,6 +9,9 @@ class FlutterDevServer {
         this.statusUpdateInterval = null;
         this.reloadCount = 0;
         this.startTime = Date.now();
+        this.flutterLoadingDelay = 15000; // 15 seconds default loading delay
+        this.flutterReadinessInterval = null;
+        this.flutterTimerInterval = null;
         
         this.init();
     }
@@ -18,6 +21,7 @@ class FlutterDevServer {
         this.initToasts();
         this.bindGlobalEvents();
         this.loadChatActivity();
+        this.initFlutterLoadingHandlers();
     }
     
     /**
@@ -66,6 +70,144 @@ class FlutterDevServer {
                 e.returnValue = '';
             }
         });
+    }
+    
+    /**
+     * Initialize Flutter app loading handlers
+     */
+    initFlutterLoadingHandlers() {
+        const flutterFrame = document.getElementById('flutter-app');
+        if (flutterFrame) {
+            // Show loading initially
+            this.showFlutterLoading();
+            
+            // Start periodic checking for Flutter readiness
+            this.startFlutterReadinessCheck();
+            
+            // Hide loading when iframe finishes loading (basic fallback)
+            flutterFrame.addEventListener('load', () => {
+                console.log('🎯 Flutter iframe HTML loaded, waiting for Flutter to initialize...');
+                // Don't hide immediately, let the readiness check handle it
+            });
+            
+            // Handle load errors
+            flutterFrame.addEventListener('error', () => {
+                console.log('❌ Flutter iframe load error');
+                this.hideFlutterLoading();
+                this.showToast('Failed to load Flutter app', 'danger');
+            });
+            
+            // Additional check: if iframe src changes, show loading
+            const originalSrc = flutterFrame.src;
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    if (mutation.type === 'attributes' && mutation.attributeName === 'src') {
+                        if (flutterFrame.src !== originalSrc) {
+                            console.log('🔄 Flutter iframe src changed, showing loading');
+                            this.showFlutterLoading();
+                            this.startFlutterReadinessCheck();
+                        }
+                    }
+                });
+            });
+            observer.observe(flutterFrame, { attributes: true });
+        }
+    }
+    
+    /**
+     * Start checking for Flutter app readiness
+     */
+    startFlutterReadinessCheck() {
+        // Clear any existing check
+        if (this.flutterReadinessInterval) {
+            clearInterval(this.flutterReadinessInterval);
+        }
+        
+        // Simple approach: configurable delay as primary method
+        console.log(`⏱️ Starting ${this.flutterLoadingDelay/1000}-second Flutter loading delay...`);
+        setTimeout(() => {
+            console.log(`✅ ${this.flutterLoadingDelay/1000}-second delay complete, hiding loading overlay`);
+            this.hideFlutterLoading();
+        }, this.flutterLoadingDelay);
+        
+        // Still do smart detection as a backup to hide earlier if possible
+        let attempts = 0;
+        const maxAttempts = this.flutterLoadingDelay / 500; // Match the delay timing
+        
+        this.flutterReadinessInterval = setInterval(() => {
+            attempts++;
+            
+            if (this.isFlutterReady()) {
+                console.log('✅ Flutter app ready early! Hiding loading overlay');
+                this.hideFlutterLoading();
+                clearInterval(this.flutterReadinessInterval);
+                this.flutterReadinessInterval = null;
+            } else if (attempts >= maxAttempts) {
+                // This will be reached at the same time as the setTimeout above
+                clearInterval(this.flutterReadinessInterval);
+                this.flutterReadinessInterval = null;
+            }
+        }, 500);
+    }
+    
+    /**
+     * Check if Flutter app is ready by multiple methods
+     */
+    isFlutterReady() {
+        const flutterFrame = document.getElementById('flutter-app');
+        if (!flutterFrame) return false;
+        
+        try {
+            // Method 1: Check for Flutter-specific elements in iframe
+            const iframeDoc = flutterFrame.contentDocument || flutterFrame.contentWindow.document;
+            if (iframeDoc) {
+                // Look for Flutter canvas or flt-* elements
+                const flutterCanvas = iframeDoc.querySelector('flt-scene-host, flt-platform-view, canvas[flt-rendering], .flt-semantics-host');
+                if (flutterCanvas) {
+                    console.log('🎯 Flutter canvas/elements detected');
+                    return true;
+                }
+                
+                // Check for Flutter app div with content
+                const flutterApp = iframeDoc.querySelector('#app, [data-flutter-main], .flutter-view');
+                if (flutterApp && flutterApp.children.length > 0) {
+                    console.log('🎯 Flutter app container with content detected');
+                    return true;
+                }
+                
+                // Check if body has substantial content (not just loading screen)
+                if (iframeDoc.body && iframeDoc.body.innerHTML.trim().length > 1000) {
+                    console.log('🎯 Substantial content detected in iframe');
+                    return true;
+                }
+            }
+        } catch (e) {
+            // Cross-origin restrictions, fallback to other methods
+            console.log('🔒 Cross-origin iframe, using alternate detection');
+        }
+        
+        // Method 2: Check Flutter server status via API
+        this.checkFlutterServerStatus();
+        
+        return false;
+    }
+    
+    /**
+     * Check Flutter server status as fallback
+     */
+    async checkFlutterServerStatus() {
+        try {
+            const response = await fetch('/api/status');
+            const data = await response.json();
+            
+            if (data.running && data.ready) {
+                console.log('✅ Flutter server reports ready status');
+                return true;
+            }
+        } catch (e) {
+            console.log('❌ Flutter status check failed:', e);
+        }
+        return false;
     }
     
     /**
@@ -261,11 +403,124 @@ class FlutterDevServer {
     }
     
     /**
+     * Show Flutter loading overlay
+     */
+    showFlutterLoading() {
+        const loadingOverlay = document.getElementById('flutter-loading-overlay');
+        if (loadingOverlay) {
+            loadingOverlay.classList.remove('d-none');
+            this.startLoadingTimer();
+            console.log('✨ Showing Flutter loading overlay with timer');
+        }
+    }
+    
+    /**
+     * Hide Flutter loading overlay
+     */
+    hideFlutterLoading() {
+        const loadingOverlay = document.getElementById('flutter-loading-overlay');
+        if (loadingOverlay) {
+            loadingOverlay.classList.add('d-none');
+            this.stopLoadingTimer();
+            console.log('✅ Hiding Flutter loading overlay');
+        }
+    }
+    
+    /**
+     * Start the loading timer countdown
+     */
+    startLoadingTimer() {
+        this.stopLoadingTimer(); // Clear any existing timer
+        
+        const maxTime = this.flutterLoadingDelay / 1000; // Convert to seconds
+        let remainingTime = maxTime;
+        
+        const timerElement = document.getElementById('flutter-loading-timer');
+        const progressElement = document.getElementById('flutter-loading-progress');
+        
+        // Update immediately
+        this.updateLoadingDisplay(remainingTime, maxTime);
+        
+        this.flutterTimerInterval = setInterval(() => {
+            remainingTime--;
+            this.updateLoadingDisplay(remainingTime, maxTime);
+            
+            if (remainingTime <= 0) {
+                this.stopLoadingTimer();
+            }
+        }, 1000);
+    }
+    
+    /**
+     * Stop the loading timer
+     */
+    stopLoadingTimer() {
+        if (this.flutterTimerInterval) {
+            clearInterval(this.flutterTimerInterval);
+            this.flutterTimerInterval = null;
+        }
+    }
+    
+    /**
+     * Update loading display with timer and progress
+     */
+    updateLoadingDisplay(remainingTime, maxTime) {
+        const timerElement = document.getElementById('flutter-loading-timer');
+        const progressElement = document.getElementById('flutter-loading-progress');
+        
+        if (timerElement) {
+            timerElement.textContent = `${remainingTime}s`;
+            
+            // Change color as time progresses
+            if (remainingTime <= 5) {
+                timerElement.className = 'badge bg-warning fs-6 px-3 py-2';
+            } else if (remainingTime <= 10) {
+                timerElement.className = 'badge bg-primary fs-6 px-3 py-2';
+            } else {
+                timerElement.className = 'badge bg-info fs-6 px-3 py-2';
+            }
+        }
+        
+        if (progressElement) {
+            const progressPercent = ((maxTime - remainingTime) / maxTime) * 100;
+            progressElement.style.width = `${progressPercent}%`;
+            
+            // Change progress bar color as time progresses
+            if (remainingTime <= 5) {
+                progressElement.className = 'progress-bar bg-success';
+            } else if (remainingTime <= 10) {
+                progressElement.className = 'progress-bar bg-primary';
+            } else {
+                progressElement.className = 'progress-bar bg-info';
+            }
+        }
+        
+        // Update status message
+        const statusMessage = document.querySelector('#flutter-loading-overlay small');
+        if (statusMessage) {
+            const messages = [
+                'Initializing Flutter runtime...',
+                'Loading Dart VM...',
+                'Compiling widgets...',
+                'Setting up rendering engine...',
+                'Preparing UI components...',
+                'Loading application assets...',
+                'Finalizing startup sequence...',
+                'Almost ready...'
+            ];
+            
+            const messageIndex = Math.floor(((maxTime - remainingTime) / maxTime) * messages.length);
+            statusMessage.textContent = messages[Math.min(messageIndex, messages.length - 1)];
+        }
+    }
+    
+    /**
      * Refresh Flutter app preview
      */
     refreshApp() {
         const iframe = document.getElementById('flutter-app');
         if (iframe) {
+            this.showFlutterLoading();
             iframe.src = '/app?' + Date.now();
         }
     }
@@ -279,6 +534,7 @@ class FlutterDevServer {
         // Method 1: Refresh the Flutter iframe
         const flutterFrame = document.getElementById('flutter-app');
         if (flutterFrame) {
+            this.showFlutterLoading();
             // Add a small delay to ensure backend changes are applied
             setTimeout(() => {
                 flutterFrame.src = flutterFrame.src;
@@ -688,6 +944,14 @@ function testFlutter() {
 
 function triggerFlutterHotReload(reason) {
     return window.flutterDevServer?.triggerFlutterHotReload(reason);
+}
+
+function showFlutterLoading() {
+    return window.flutterDevServer?.showFlutterLoading();
+}
+
+function hideFlutterLoading() {
+    return window.flutterDevServer?.hideFlutterLoading();
 }
 
 function clearLogs() {
