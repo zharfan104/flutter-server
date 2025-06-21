@@ -63,7 +63,8 @@ class ChatManager {
     updateSendButton() {
         const messageInput = document.getElementById('message-input');
         const sendButton = document.getElementById('send-button');
-        sendButton.disabled = messageInput.value.trim() === '';
+        const isLoading = sendButton.classList.contains('loading');
+        sendButton.disabled = messageInput.value.trim() === '' || isLoading;
     }
     
     handleUrlParameters() {
@@ -298,13 +299,16 @@ class ChatManager {
     
     async sendMessage() {
         const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
         const message = messageInput.value.trim();
         
-        if (!message) return;
+        if (!message || sendButton.classList.contains('loading')) return;
         
-        // Clear input and disable send button
+        // Set immediate loading state
+        this.setLoadingState(true);
+        
+        // Clear input
         messageInput.value = '';
-        this.updateSendButton();
         this.autoExpandTextarea();
         
         // Add user message to UI immediately
@@ -320,8 +324,8 @@ class ChatManager {
         };
         this.addMessageToUI(userMessage);
         
-        // Show typing indicator
-        this.showTypingIndicator();
+        // Show enhanced loading state
+        this.showProcessingIndicator();
         
         try {
             const response = await fetch('/api/chat/send', {
@@ -339,26 +343,87 @@ class ChatManager {
             
             if (data.status === 'success') {
                 this.currentConversationId = data.conversation_id;
+                // Update to AI processing state
+                this.updateProcessingIndicator('AI is processing your request...');
                 // AI response will be added via polling
             } else {
                 throw new Error(data.error || 'Failed to send message');
             }
         } catch (error) {
             console.error('Failed to send message:', error);
-            this.hideTypingIndicator();
+            this.setLoadingState(false);
+            this.hideProcessingIndicator();
             this.showToast('Failed to send message: ' + error.message, 'danger');
+            
+            // Restore the message to input on error
+            messageInput.value = message;
+            this.updateSendButton();
+            this.autoExpandTextarea();
         }
     }
     
-    showTypingIndicator() {
+    setLoadingState(isLoading) {
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const sendIcon = sendButton.querySelector('i');
+        
+        if (isLoading) {
+            // Set loading state
+            sendButton.classList.add('loading');
+            sendButton.disabled = true;
+            messageInput.disabled = true;
+            
+            // Change button to show spinner
+            sendIcon.className = 'spinner-border spinner-border-sm';
+            sendButton.setAttribute('title', 'Sending...');
+        } else {
+            // Remove loading state
+            sendButton.classList.remove('loading');
+            messageInput.disabled = false;
+            
+            // Restore send icon
+            sendIcon.className = 'bi bi-send';
+            sendButton.setAttribute('title', 'Send message');
+            
+            this.updateSendButton(); // Re-evaluate button state
+        }
+    }
+    
+    showProcessingIndicator() {
         const indicator = document.getElementById('typing-indicator');
+        const statusText = indicator.querySelector('.processing-status');
+        
+        if (statusText) {
+            statusText.textContent = 'Sending message...';
+        }
+        
         indicator.style.display = 'block';
         this.scrollToBottom();
     }
     
-    hideTypingIndicator() {
+    updateProcessingIndicator(message) {
+        const indicator = document.getElementById('typing-indicator');
+        const statusText = indicator.querySelector('.processing-status');
+        
+        if (statusText) {
+            statusText.textContent = message;
+        }
+    }
+    
+    hideProcessingIndicator() {
         const indicator = document.getElementById('typing-indicator');
         indicator.style.display = 'none';
+        
+        // Reset loading states
+        this.setLoadingState(false);
+    }
+    
+    showTypingIndicator() {
+        this.showProcessingIndicator();
+    }
+    
+    hideTypingIndicator() {
+        this.hideProcessingIndicator();
     }
     
     startPolling() {
@@ -393,7 +458,12 @@ class ChatManager {
                 });
                 
                 this.lastMessageCount = data.messages.length;
-                this.hideTypingIndicator();
+                
+                // Check if the last message is from assistant - if so, hide loading indicators
+                const lastMessage = newMessages[newMessages.length - 1];
+                if (lastMessage && lastMessage.role === 'assistant') {
+                    this.hideProcessingIndicator();
+                }
                 
                 // Update conversations list to reflect new activity
                 this.loadConversations();

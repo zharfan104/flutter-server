@@ -82,7 +82,7 @@
                 <!-- Messages will be displayed here -->
             </div>
             
-            <!-- Typing indicator -->
+            <!-- Processing indicator -->
             <div id="typing-indicator" class="px-3 py-2" style="display: none;">
                 <div class="d-flex align-items-center text-muted">
                     <div class="avatar-sm bg-primary rounded-circle d-flex align-items-center justify-content-center me-2">
@@ -93,7 +93,7 @@
                         <span></span>
                         <span></span>
                     </div>
-                    <small class="ms-2">AI is thinking...</small>
+                    <small class="ms-2 processing-status">AI is thinking...</small>
                 </div>
             </div>
             
@@ -226,6 +226,42 @@
 /* Auto-expanding textarea */
 #message-input {
     transition: height 0.2s ease;
+}
+
+#message-input:disabled {
+    background-color: #f8f9fa;
+    opacity: 0.7;
+}
+
+/* Loading button states */
+#send-button.loading {
+    pointer-events: none;
+}
+
+#send-button:disabled {
+    opacity: 0.6;
+}
+
+/* Enhanced typing indicator */
+#typing-indicator {
+    background: rgba(0, 123, 255, 0.05);
+    border-radius: 8px;
+    margin: 0 12px;
+    animation: pulse-subtle 2s infinite;
+}
+
+@keyframes pulse-subtle {
+    0%, 100% {
+        background: rgba(0, 123, 255, 0.05);
+    }
+    50% {
+        background: rgba(0, 123, 255, 0.1);
+    }
+}
+
+.processing-status {
+    color: #6c757d;
+    font-weight: 500;
 }
 
 /* Code highlighting in messages */

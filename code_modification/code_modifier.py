@@ -19,6 +19,8 @@ class ModificationRequest:
     """Represents a code modification request"""
     description: str
     target_files: Optional[List[str]] = None
+    files_to_create: Optional[List[str]] = None
+    files_to_delete: Optional[List[str]] = None
     context: Optional[Dict] = None
     user_id: Optional[str] = None
     request_id: Optional[str] = None
@@ -29,6 +31,8 @@ class ModificationResult:
     """Represents the result of a code modification"""
     success: bool
     modified_files: List[str]
+    created_files: List[str]
+    deleted_files: List[str]
     errors: List[str]
     warnings: List[str]
     changes_summary: str
@@ -85,8 +89,10 @@ Current File Contents:
 {current_contents}
 
 Files to Modify: {target_files}
+Files to Create: {files_to_create}
+Files to Delete: {files_to_delete}
 
-For each file that needs modification, generate the complete new content. Format your response as:
+For each file that needs modification or creation, generate the complete new content. Format your response as:
 
 <files path="lib/example.dart">
 // Complete new file content here
@@ -96,12 +102,17 @@ For each file that needs modification, generate the complete new content. Format
 // Complete new file content here  
 </files>
 
+For files to delete, respond with:
+<delete path="lib/old_file.dart">DELETE</delete>
+
 Important guidelines:
 1. Maintain existing code style and patterns
 2. Keep imports and dependencies consistent
 3. Ensure code compiles and follows Flutter best practices
 4. Only modify what's necessary for the requested change
 5. Preserve existing functionality unless explicitly asked to change it
+6. When creating new files, follow Flutter/Dart naming conventions
+7. Ensure proper directory structure for new files
         """
     
     def _load_project_structure(self):
@@ -132,10 +143,12 @@ Important guidelines:
             else:
                 target_files = await self._determine_relevant_files(request, structure)
             
-            if not target_files:
+            if not target_files and not request.files_to_create and not request.files_to_delete:
                 return ModificationResult(
                     success=False,
                     modified_files=[],
+                    created_files=[],
+                    deleted_files=[],
                     errors=["No files identified for modification"],
                     warnings=[],
                     changes_summary="No changes made",
@@ -144,16 +157,17 @@ Important guidelines:
             
             print(f"Target files for modification: {target_files}")
             
-            # Get current file contents
-            current_contents = self._get_file_contents(target_files)
+            # Get current file contents (include files to create with empty content)
+            all_files = target_files + (request.files_to_create or [])
+            current_contents = self._get_file_contents(all_files)
             
             # Generate modified content
-            modifications = await self._generate_modifications(
+            modifications, deletions = await self._generate_modifications(
                 request, structure, target_files, current_contents
             )
             
             # Apply modifications
-            result = await self._apply_modifications(modifications, request.request_id)
+            result = await self._apply_modifications(modifications, deletions, request.request_id)
             
             return result
             
@@ -162,6 +176,8 @@ Important guidelines:
             return ModificationResult(
                 success=False,
                 modified_files=[],
+                created_files=[],
+                deleted_files=[],
                 errors=[f"Modification failed: {str(e)}"],
                 warnings=[],
                 changes_summary="No changes made due to error",
@@ -258,7 +274,7 @@ Important guidelines:
         structure: ProjectStructure,
         target_files: List[str],
         current_contents: Dict[str, str]
-    ) -> List[FileModification]:
+    ) -> Tuple[List[FileModification], List[str]]:
         """
         Generate modified content for target files
         
@@ -286,7 +302,9 @@ Important guidelines:
             project_summary=json.dumps(project_summary, indent=2),
             change_request=request.description,
             current_contents=contents_text,
-            target_files=json.dumps(target_files)
+            target_files=json.dumps(target_files),
+            files_to_create=json.dumps(request.files_to_create or []),
+            files_to_delete=json.dumps(request.files_to_delete or [])
         )
         
         messages = [{"role": "user", "content": prompt}]
@@ -294,26 +312,29 @@ Important guidelines:
         response = self.llm_executor.execute(messages=messages)
         
         # Parse the response to extract file modifications
-        modifications = self._parse_modification_response(response.text, current_contents)
+        modifications, deletions = self._parse_modification_response(response.text, current_contents, request)
         
-        return modifications
+        return modifications, deletions
     
     def _parse_modification_response(
         self, 
         response_text: str, 
-        current_contents: Dict[str, str]
-    ) -> List[FileModification]:
+        current_contents: Dict[str, str],
+        request: ModificationRequest
+    ) -> Tuple[List[FileModification], List[str]]:
         """
-        Parse LLM response to extract file modifications
+        Parse LLM response to extract file modifications and deletions
         
         Args:
             response_text: The LLM response
             current_contents: Current file contents
+            request: The modification request
             
         Returns:
-            List of FileModification objects
+            Tuple of (modifications, deletions)
         """
         modifications = []
+        deletions = []
         
         # Parse response looking for <files path="..."> blocks
         import re
@@ -322,6 +343,14 @@ Important guidelines:
             response_text,
             re.DOTALL
         )
+        
+        # Parse response looking for <delete path="..."> blocks
+        delete_blocks = re.findall(
+            r'<delete path="([^"]+)">DELETE</delete>',
+            response_text
+        )
+        
+        deletions.extend(delete_blocks)
         
         for file_path, content in file_blocks:
             # Clean up the content
@@ -346,11 +375,18 @@ Important guidelines:
                     change_description=f"Modified based on request"
                 ))
         
-        return modifications
+        # Add any explicitly requested deletions that weren't in LLM response
+        if request.files_to_delete:
+            for file_to_delete in request.files_to_delete:
+                if file_to_delete not in deletions:
+                    deletions.append(file_to_delete)
+        
+        return modifications, deletions
     
     async def _apply_modifications(
         self, 
         modifications: List[FileModification],
+        deletions: List[str],
         request_id: Optional[str] = None
     ) -> ModificationResult:
         """
@@ -358,12 +394,15 @@ Important guidelines:
         
         Args:
             modifications: List of modifications to apply
+            deletions: List of files to delete
             request_id: Optional request ID
             
         Returns:
             ModificationResult
         """
         modified_files = []
+        created_files = []
+        deleted_files = []
         errors = []
         warnings = []
         
@@ -371,8 +410,28 @@ Important guidelines:
         backups = {}
         
         try:
+            # Handle file deletions first
+            for file_to_delete in deletions:
+                file_path = self.project_path / file_to_delete
+                
+                if file_path.exists():
+                    # Create backup before deletion
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        backups[file_to_delete] = f.read()
+                    
+                    # Delete the file
+                    file_path.unlink()
+                    deleted_files.append(file_to_delete)
+                    print(f"Deleted file: {file_to_delete}")
+                else:
+                    warnings.append(f"File to delete not found: {file_to_delete}")
+            
+            # Handle file modifications and creations
             for modification in modifications:
                 file_path = self.project_path / modification.file_path
+                
+                # Determine if this is a new file or modification
+                is_new_file = not file_path.exists() or modification.original_content == ""
                 
                 # Create backup if file exists
                 if file_path.exists():
@@ -386,28 +445,45 @@ Important guidelines:
                 with open(file_path, 'w', encoding='utf-8') as f:
                     f.write(modification.modified_content)
                 
-                modified_files.append(modification.file_path)
-                print(f"Modified file: {modification.file_path}")
+                if is_new_file:
+                    created_files.append(modification.file_path)
+                    print(f"Created file: {modification.file_path}")
+                else:
+                    modified_files.append(modification.file_path)
+                    print(f"Modified file: {modification.file_path}")
             
             # Validate the modifications (basic syntax check)
             validation_errors = self._validate_modifications(modifications)
             if validation_errors:
                 # Rollback changes
-                await self._rollback_modifications(backups)
+                await self._rollback_modifications(backups, deleted_files)
                 return ModificationResult(
                     success=False,
                     modified_files=[],
+                    created_files=[],
+                    deleted_files=[],
                     errors=validation_errors,
                     warnings=warnings,
                     changes_summary="Modifications rolled back due to validation errors",
                     request_id=request_id
                 )
             
-            changes_summary = f"Successfully modified {len(modified_files)} files: {', '.join(modified_files)}"
+            # Create summary of changes
+            summary_parts = []
+            if modified_files:
+                summary_parts.append(f"Modified {len(modified_files)} files")
+            if created_files:
+                summary_parts.append(f"Created {len(created_files)} files")
+            if deleted_files:
+                summary_parts.append(f"Deleted {len(deleted_files)} files")
+            
+            changes_summary = "; ".join(summary_parts) if summary_parts else "No changes made"
             
             return ModificationResult(
                 success=True,
                 modified_files=modified_files,
+                created_files=created_files,
+                deleted_files=deleted_files,
                 errors=errors,
                 warnings=warnings,
                 changes_summary=changes_summary,
@@ -416,10 +492,12 @@ Important guidelines:
             
         except Exception as e:
             # Rollback changes on error
-            await self._rollback_modifications(backups)
+            await self._rollback_modifications(backups, deleted_files)
             return ModificationResult(
                 success=False,
                 modified_files=[],
+                created_files=[],
+                deleted_files=[],
                 errors=[f"Failed to apply modifications: {str(e)}"],
                 warnings=warnings,
                 changes_summary="Modifications rolled back due to error",
@@ -461,16 +539,23 @@ Important guidelines:
         
         return errors
     
-    async def _rollback_modifications(self, backups: Dict[str, str]):
+    async def _rollback_modifications(self, backups: Dict[str, str], deleted_files: List[str]):
         """
         Rollback modifications using backups
         
         Args:
             backups: Dictionary of file paths to their backup content
+            deleted_files: List of files that were deleted
         """
         for file_path, backup_content in backups.items():
             try:
                 full_path = self.project_path / file_path
+                
+                # If this was a deleted file, restore it
+                if file_path in deleted_files:
+                    # Create directory if needed
+                    full_path.parent.mkdir(parents=True, exist_ok=True)
+                
                 with open(full_path, 'w', encoding='utf-8') as f:
                     f.write(backup_content)
                 print(f"Rolled back: {file_path}")

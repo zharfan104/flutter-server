@@ -182,6 +182,10 @@ class FlutterManager:
         except Exception as e:
             return {"error": f"Failed to trigger hot reload: {str(e)}"}
     
+    def trigger_hot_reload(self):
+        """Alias for hot_reload() to match BuildPipelineService interface"""
+        return self.hot_reload()
+    
     
     def update_file(self, file_path, content):
         """Update a file in the Flutter project"""
@@ -468,6 +472,94 @@ def suggest_modification_files():
     except Exception as e:
         return jsonify({"error": f"Suggestion failed: {str(e)}"}), 500
 
+@app.route('/api/ai-pipeline', methods=['POST'])
+def ai_pipeline():
+    """Execute the complete AI-driven development pipeline"""
+    try:
+        from code_modification.build_pipeline import BuildPipelineService
+        from utils.status_tracker import status_tracker
+        import uuid
+        
+        data = request.json
+        user_request = data.get('description', '')
+        context = data.get('context', {})
+        user_id = data.get('user_id', 'anonymous')
+        
+        if not user_request:
+            return jsonify({"error": "Description is required"}), 400
+        
+        # Create pipeline request
+        request_id = str(uuid.uuid4())
+        
+        # Create status tracking
+        status_tracker.create_task(request_id, total_steps=6, metadata={
+            "type": "ai_pipeline",
+            "description": user_request,
+            "user_id": user_id
+        })
+        
+        # Initialize pipeline service
+        pipeline = BuildPipelineService(flutter_manager.project_path, flutter_manager)
+        
+        # Set up status callback
+        def status_callback(message):
+            try:
+                status_tracker.update_status(request_id, message)
+            except Exception as e:
+                print(f"Status callback error: {e}")
+        
+        pipeline.set_status_callback(status_callback)
+        
+        # Execute pipeline in background thread
+        import threading
+        
+        def execute_pipeline():
+            try:
+                status_tracker.start_task(request_id, "Starting AI development pipeline...")
+                
+                # Execute the complete pipeline
+                import asyncio
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                result = loop.run_until_complete(pipeline.execute_pipeline(user_request, context))
+                
+                if result.success:
+                    summary = pipeline.get_pipeline_summary(result)
+                    status_tracker.complete_task(request_id, summary)
+                else:
+                    error_msg = result.error_message or "Pipeline execution failed"
+                    status_tracker.fail_task(request_id, error_msg)
+                    
+            except Exception as e:
+                status_tracker.fail_task(request_id, str(e))
+        
+        thread = threading.Thread(target=execute_pipeline, daemon=True)
+        thread.start()
+        
+        return jsonify({
+            "status": "started",
+            "request_id": request_id,
+            "message": "AI pipeline started - complete development workflow in progress"
+        })
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to start AI pipeline: {str(e)}"}), 500
+
+@app.route('/api/pipeline-status/<request_id>', methods=['GET'])
+def get_pipeline_status(request_id):
+    """Get status of AI pipeline request"""
+    try:
+        from utils.status_tracker import status_tracker
+        
+        task_summary = status_tracker.get_task_summary(request_id)
+        if not task_summary:
+            return jsonify({"error": "Request not found"}), 404
+        
+        return jsonify(task_summary)
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/modification-history', methods=['GET'])
 def get_modification_history():
     """Get history of code modifications"""
@@ -571,43 +663,67 @@ Be helpful, concise, and practical. Always consider the current project context 
                 needs_modification = any(keyword in message.lower() for keyword in modification_keywords)
                 
                 if needs_modification and "don't" not in message.lower() and "how to" not in message.lower():
-                    # This looks like a code modification request
+                    # This looks like a code modification request - use the complete AI pipeline
                     try:
-                        # Use code modification service
-                        code_modifier = CodeModificationService(flutter_manager.project_path)
-                        request_id = str(uuid.uuid4())
+                        from code_modification.build_pipeline import BuildPipelineService
                         
-                        modification_request = ModificationRequest(
-                            description=message,
-                            user_id='chat_user',
-                            request_id=request_id
-                        )
+                        # Use the complete AI pipeline for code modifications
+                        pipeline = BuildPipelineService(flutter_manager.project_path, flutter_manager)
                         
-                        # Execute modification
+                        # Execute the complete pipeline
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
-                        result = loop.run_until_complete(code_modifier.modify_code(modification_request))
+                        pipeline_result = loop.run_until_complete(pipeline.execute_pipeline(
+                            user_request=message,
+                            context={"source": "chat", "conversation_id": conversation_id}
+                        ))
                         
-                        if result.success:
-                            ai_response = f"I've successfully made the requested changes to your Flutter project!\n\n"
-                            ai_response += f"**Changes Summary:** {result.changes_summary}\n\n"
-                            ai_response += f"**Modified Files:** {', '.join(result.modified_files)}\n\n"
+                        if pipeline_result.success:
+                            ai_response = f"🎉 I've successfully implemented your request using the complete AI pipeline!\n\n"
                             
-                            # Trigger hot reload if Flutter is running
-                            if flutter_manager.is_running and result.modified_files:
-                                reload_result = flutter_manager.hot_reload()
-                                if reload_result.get('success'):
-                                    ai_response += "✅ Hot reload triggered successfully! You should see the changes in your app now."
+                            # Add modification details
+                            if pipeline_result.modification_result:
+                                mod_result = pipeline_result.modification_result
+                                ai_response += f"**Changes Made:** {mod_result.changes_summary}\n\n"
+                                
+                                if mod_result.modified_files:
+                                    ai_response += f"**Modified Files:** {', '.join(mod_result.modified_files)}\n"
+                                if mod_result.created_files:
+                                    ai_response += f"**Created Files:** {', '.join(mod_result.created_files)}\n"
+                                if mod_result.deleted_files:
+                                    ai_response += f"**Deleted Files:** {', '.join(mod_result.deleted_files)}\n"
+                                ai_response += "\n"
+                            
+                            # Add analysis results
+                            if pipeline_result.final_analysis:
+                                final_analysis = pipeline_result.final_analysis
+                                if final_analysis.success:
+                                    ai_response += "✅ **Code Analysis:** No errors found - your code is clean!\n\n"
                                 else:
-                                    ai_response += "⚠️ Hot reload was attempted but may not have worked. You might need to restart your Flutter app."
-                            else:
-                                ai_response += "ℹ️ Please start your Flutter development server to see the changes."
-                        else:
-                            ai_response = f"I encountered some issues while trying to make the changes:\n\n"
-                            ai_response += f"**Errors:** {', '.join(result.errors)}\n\n"
-                            ai_response += "Let me provide some guidance instead:\n\n"
+                                    error_count = len(final_analysis.errors)
+                                    ai_response += f"⚠️ **Code Analysis:** {error_count} errors remain after pipeline execution.\n\n"
                             
-                            # Fall back to providing advice
+                            # Add fixing results if applicable
+                            if pipeline_result.fixing_result:
+                                fixing = pipeline_result.fixing_result
+                                errors_fixed = fixing.initial_errors - fixing.final_errors
+                                if errors_fixed > 0:
+                                    ai_response += f"🔧 **Error Fixing:** Fixed {errors_fixed} errors in {fixing.total_attempts} attempts.\n\n"
+                            
+                            # Add performance summary
+                            summary = pipeline.get_pipeline_summary(pipeline_result)
+                            ai_response += f"⏱️ **Pipeline completed** in {summary['total_time']} with {summary['steps_completed']}/{summary['total_steps']} steps successful."
+                            
+                            if flutter_manager.is_running:
+                                ai_response += "\n\n🔄 Hot reload was automatically triggered - you should see your changes live!"
+                            else:
+                                ai_response += "\n\nℹ️ Start your Flutter development server to see the changes."
+                        else:
+                            ai_response = f"❌ I encountered issues while implementing your request:\n\n"
+                            ai_response += f"**Error:** {pipeline_result.error_message or 'Pipeline execution failed'}\n\n"
+                            
+                            # Provide fallback guidance
+                            ai_response += "Let me provide some guidance instead:\n\n"
                             messages = [{"role": "user", "content": f"The user asked: {message}\n\nProvide helpful guidance about how to implement this in Flutter."}]
                             response = llm_executor.execute(messages=messages, system_prompt=system_prompt)
                             ai_response += response.text
