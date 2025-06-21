@@ -12,7 +12,7 @@ CORS(app)
 class FlutterManager:
     def __init__(self):
         self.flutter_process = None
-        self.project_path = "/app/project"
+        self.project_path = os.path.join(os.getcwd(), "project")
         self.output_buffer = []
         self.is_running = False
         self.ready = False
@@ -28,9 +28,9 @@ class FlutterManager:
                 if self.github_token:
                     # Insert token into URL
                     auth_url = self.repo_url.replace('https://', f'https://{self.github_token}@')
-                    subprocess.run(["git", "clone", auth_url, "project"], cwd="/app", check=True)
+                    subprocess.run(["git", "clone", auth_url, "project"], cwd=os.getcwd(), check=True)
                 else:
-                    subprocess.run(["git", "clone", self.repo_url, "project"], cwd="/app", check=True)
+                    subprocess.run(["git", "clone", self.repo_url, "project"], cwd=os.getcwd(), check=True)
                 print("Repository cloned!")
             else:
                 print("Repository already exists")
@@ -38,7 +38,7 @@ class FlutterManager:
             # Fallback to creating generic Flutter project
             if not os.path.exists(self.project_path):
                 print("Creating generic Flutter project...")
-                subprocess.run(["flutter", "create", "project"], cwd="/app", check=True)
+                subprocess.run(["flutter", "create", "project"], cwd=os.getcwd(), check=True)
                 print("Flutter project created!")
     
     def git_pull(self):
@@ -384,6 +384,109 @@ class _MyHomePageState extends State<MyHomePage> {{
         result['reload'] = reload_result
     
     return jsonify(result)
+
+# Flutter static assets routing (similar to nginx config)
+@app.route('/canvaskit/<path:path>')
+@app.route('/assets/<path:path>')
+@app.route('/manifest.json')
+@app.route('/favicon.ico')
+@app.route('/favicon.png') 
+@app.route('/icons/<path:path>')
+@app.route('/flutter_bootstrap.js')
+def flutter_static_assets(filename=None, path=None):
+    """Proxy Flutter static assets to the Flutter development server"""
+    import requests
+    
+    try:
+        # Build the correct URL based on the request
+        request_path = request.path.lstrip('/')
+        flutter_url = f'http://127.0.0.1:8080/{request_path}'
+        
+        resp = requests.get(flutter_url, stream=True, timeout=10)
+        
+        def generate():
+            for chunk in resp.iter_content(chunk_size=1024):
+                yield chunk
+                
+        # Set proper headers for static assets
+        headers = {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+        }
+        
+        # Copy important headers from Flutter server
+        for header in ['Content-Type', 'Content-Length']:
+            if header in resp.headers:
+                headers[header] = resp.headers[header]
+        
+        return Response(generate(), 
+                       status=resp.status_code,
+                       headers=headers)
+    except Exception as e:
+        print(f"Error serving static asset {request.path}: {str(e)}")
+        return f"Asset not available: {str(e)}", 404
+
+# Handle other JS/CSS/image files with file extensions
+@app.route('/<path:filename>')
+def static_file_handler(filename):
+    """Handle static files like .js, .css, .png, etc."""
+    import requests
+    
+    # Check if this looks like a static asset based on extension
+    static_extensions = ['.js', '.js.map', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.woff', '.woff2', '.ttf', '.ico']
+    
+    if any(filename.endswith(ext) for ext in static_extensions):
+        try:
+            flutter_url = f'http://127.0.0.1:8080/{filename}'
+            resp = requests.get(flutter_url, stream=True, timeout=10)
+            
+            def generate():
+                for chunk in resp.iter_content(chunk_size=1024):
+                    yield chunk
+                    
+            # Set proper headers for static assets
+            headers = {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+            }
+            
+            # Copy important headers from Flutter server
+            for header in ['Content-Type', 'Content-Length']:
+                if header in resp.headers:
+                    headers[header] = resp.headers[header]
+            
+            return Response(generate(), 
+                           status=resp.status_code,
+                           headers=headers)
+        except Exception as e:
+            print(f"Error serving static file {filename}: {str(e)}")
+            return f"Asset not available: {str(e)}", 404
+    
+    # Not a static asset, return 404
+    return "Not Found", 404
+
+# Flutter app proxy route
+@app.route('/app')
+@app.route('/app/')
+@app.route('/app/<path:path>')
+def flutter_app(path=''):
+    """Proxy Flutter app requests to the Flutter development server"""
+    import requests
+    try:
+        flutter_url = f'http://127.0.0.1:8080/{path}'
+        resp = requests.get(flutter_url, stream=True)
+        
+        def generate():
+            for chunk in resp.iter_content(chunk_size=1024):
+                yield chunk
+                
+        return Response(generate(), 
+                       status=resp.status_code,
+                       headers=dict(resp.headers))
+    except Exception as e:
+        return f"Flutter app not available: {str(e)}", 503
 
 # Landing page with instructions and embedded app
 @app.route('/')
@@ -812,7 +915,10 @@ curl -X POST http://localhost:80/api/demo/update-counter \\
     </html>
     '''
 
-if __name__ == '__main__':
+def main():
     print("Starting Flask server on port 5000...")
     threading.Thread(target=lambda: flutter_manager.start_flutter(), daemon=True).start()
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=5000, debug=True)
+
+if __name__ == '__main__':
+    main()
