@@ -6,12 +6,30 @@ Orchestrates multi-file code modifications using LLM analysis
 import os
 import json
 import asyncio
+import time
 from typing import Dict, List, Set, Optional, Tuple, Union
 from dataclasses import dataclass
 from pathlib import Path
 
 from .llm_executor import SimpleLLMExecutor, LLMResponse
 from .project_analyzer import FlutterProjectAnalyzer, ProjectStructure
+
+# Import advanced logging and monitoring
+try:
+    from utils.advanced_logger import logger, LogCategory, LogLevel, OperationTracker
+    from utils.request_tracer import tracer, EventContext, TraceEventType
+    from utils.performance_monitor import performance_monitor, TimingContext
+    from utils.error_analyzer import error_analyzer, analyze_error
+    MONITORING_AVAILABLE = True
+except ImportError:
+    MONITORING_AVAILABLE = False
+
+# Empty context manager for backward compatibility
+class EmptyContext:
+    def __enter__(self):
+        return self
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
 
 
 @dataclass
@@ -131,6 +149,12 @@ Important guidelines:
         Returns:
             ModificationResult with success status and details
         """
+        start_time = time.time()
+        
+        # Simple logging
+        if MONITORING_AVAILABLE:
+            logger.info(LogCategory.CODE_MOD, f"Starting code modification: {request.description[:100]}...")
+        
         print(f"Processing modification request: {request.description}")
         
         try:
@@ -142,14 +166,19 @@ Important guidelines:
                 target_files = request.target_files
             else:
                 target_files = await self._determine_relevant_files(request, structure)
-            
+                
             if not target_files and not request.files_to_create and not request.files_to_delete:
+                error_msg = "No files identified for modification"
+                
+                if MONITORING_AVAILABLE:
+                    logger.warn(LogCategory.CODE_MOD, error_msg)
+                
                 return ModificationResult(
                     success=False,
                     modified_files=[],
                     created_files=[],
                     deleted_files=[],
-                    errors=["No files identified for modification"],
+                    errors=[error_msg],
                     warnings=[],
                     changes_summary="No changes made",
                     request_id=request.request_id
@@ -157,7 +186,7 @@ Important guidelines:
             
             print(f"Target files for modification: {target_files}")
             
-            # Get current file contents (include files to create with empty content)
+            # Get current file contents
             all_files = target_files + (request.files_to_create or [])
             current_contents = self._get_file_contents(all_files)
             
@@ -169,16 +198,27 @@ Important guidelines:
             # Apply modifications
             result = await self._apply_modifications(modifications, deletions, request.request_id)
             
-            return result
+            # Simple success logging
+            if MONITORING_AVAILABLE:
+                logger.info(LogCategory.CODE_MOD, f"Code modification completed: {result.changes_summary}")
             
+            print(f"✅ Code modification completed: {result.changes_summary}")
+            return result
+                
         except Exception as e:
-            print(f"Error during code modification: {str(e)}")
+            error_message = str(e)
+            
+            print(f"Error during code modification: {error_message}")
+            
+            if MONITORING_AVAILABLE:
+                logger.error(LogCategory.CODE_MOD, f"Code modification failed: {error_message}")
+            
             return ModificationResult(
                 success=False,
                 modified_files=[],
                 created_files=[],
                 deleted_files=[],
-                errors=[f"Modification failed: {str(e)}"],
+                errors=[f"Modification failed: {error_message}"],
                 warnings=[],
                 changes_summary="No changes made due to error",
                 request_id=request.request_id

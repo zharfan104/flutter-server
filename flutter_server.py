@@ -216,8 +216,94 @@ class FlutterManager:
 # Initialize Flutter manager
 flutter_manager = FlutterManager()
 
+# Initialize advanced logging and monitoring systems
+try:
+    from utils.advanced_logger import logger, LogCategory, RequestTracker
+    from utils.request_tracer import tracer
+    from utils.performance_monitor import performance_monitor
+    from utils.error_analyzer import error_analyzer
+    
+    # Configure advanced logging
+    logger.configure(
+        enable_console=True, 
+        enable_file=True, 
+        log_file_path="logs/flutter_server.log",
+        max_log_entries=50000
+    )
+    
+    # Start performance monitoring
+    performance_monitor.start_monitoring()
+    
+    # Set up performance alert callback
+    def alert_callback(alert):
+        logger.warn(LogCategory.PERFORMANCE, f"Performance Alert: {alert.message}",
+                   context={
+                       "alert_id": alert.alert_id,
+                       "metric": alert.metric_name,
+                       "value": alert.current_value,
+                       "threshold": alert.threshold,
+                       "level": alert.level.value
+                   },
+                   tags=["alert", "performance"])
+    
+    performance_monitor.subscribe_to_alerts(alert_callback)
+    
+    # Log successful initialization
+    logger.info(LogCategory.SYSTEM, "Advanced monitoring systems initialized",
+               context={
+                   "logging_enabled": True,
+                   "performance_monitoring": True,
+                   "request_tracing": True,
+                   "error_analysis": True
+               },
+               tags=["startup", "monitoring"])
+    
+    print("✓ Advanced monitoring and logging systems initialized")
+    MONITORING_AVAILABLE = True
+    
+except ImportError as e:
+    print(f"⚠️ Monitoring systems not available: {e}")
+    MONITORING_AVAILABLE = False
+except Exception as e:
+    print(f"❌ Failed to initialize monitoring systems: {e}")
+    MONITORING_AVAILABLE = False
+
 # Initialize chat manager
 from chat.chat_manager import chat_manager
+
+# Initialize advanced logging and monitoring systems
+try:
+    from utils.advanced_logger import logger, LogCategory, RequestTracker
+    from utils.performance_monitor import performance_monitor
+    from utils.request_tracer import tracer
+    from utils.error_analyzer import error_analyzer
+    
+    # Configure advanced logging
+    logger.configure(
+        enable_console=True,
+        enable_file=True,
+        log_file_path="logs/flutter_server.log",
+        enable_performance=True
+    )
+    
+    # Start performance monitoring
+    performance_monitor.start_monitoring()
+    
+    # Log system startup
+    logger.info(LogCategory.SYSTEM, "Flutter Development Server starting up",
+               context={
+                   "project_path": str(flutter_manager.project_path),
+                   "monitoring_enabled": True,
+                   "performance_tracking": True
+               },
+               tags=["startup", "initialization"])
+    
+    ADVANCED_MONITORING = True
+    print("✅ Advanced monitoring and logging initialized")
+    
+except ImportError as e:
+    print(f"⚠️ Advanced monitoring not available: {e}")
+    ADVANCED_MONITORING = False
 
 # API Routes - all prefixed with /api
 @app.route('/api/health', methods=['GET'])
@@ -472,6 +558,52 @@ def suggest_modification_files():
     except Exception as e:
         return jsonify({"error": f"Suggestion failed: {str(e)}"}), 500
 
+@app.route('/api/project-structure', methods=['GET'])
+def get_project_structure():
+    """Get detailed project structure analysis"""
+    try:
+        from code_modification.project_analyzer import FlutterProjectAnalyzer
+        from utils.advanced_logger import logger, LogCategory, RequestTracker
+        from utils.performance_monitor import performance_monitor, TimingContext
+        
+        with RequestTracker() as req:
+            with TimingContext("project_structure_analysis"):
+                logger.info(LogCategory.SYSTEM, "Project structure analysis requested")
+                
+                analyzer = FlutterProjectAnalyzer(flutter_manager.project_path)
+                project_summary = analyzer.generate_project_summary()
+                
+                # Get additional metadata
+                project_metadata = {
+                    "analysis_timestamp": time.time(),
+                    "project_path": str(flutter_manager.project_path),
+                    "flutter_status": flutter_manager.get_status(),
+                    "cache_status": "live_analysis"  # Future: implement caching
+                }
+                
+                logger.info(LogCategory.SYSTEM, "Project structure analysis completed",
+                           context={
+                               "dart_files": project_summary.get("total_dart_files", 0),
+                               "dependencies": len(project_summary.get("dependencies", [])),
+                               "architecture": project_summary.get("architecture_pattern", "unknown")
+                           })
+                
+                return jsonify({
+                    "status": "success",
+                    "project_structure": project_summary,
+                    "metadata": project_metadata
+                })
+        
+    except Exception as e:
+        from utils.error_analyzer import analyze_error
+        error_instance = analyze_error("api", "get_project_structure", e)
+        
+        return jsonify({
+            "status": "error", 
+            "error": str(e),
+            "error_id": error_instance.error_id
+        }), 500
+
 @app.route('/api/ai-pipeline', methods=['POST'])
 def ai_pipeline():
     """Execute the complete AI-driven development pipeline"""
@@ -558,6 +690,211 @@ def get_pipeline_status(request_id):
         return jsonify(task_summary)
         
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/debug/pipeline/<request_id>', methods=['GET'])
+def get_pipeline_debug_info(request_id):
+    """Get detailed debug information for a pipeline request"""
+    try:
+        from utils.advanced_logger import logger, LogCategory
+        from utils.request_tracer import tracer
+        from utils.performance_monitor import performance_monitor
+        from utils.error_analyzer import error_analyzer
+        
+        # Get trace information
+        trace = tracer.get_trace(request_id)
+        if not trace:
+            return jsonify({"error": "Request trace not found"}), 404
+        
+        # Get performance summary for this trace
+        performance_summary = trace.get_performance_summary()
+        
+        # Get related logs
+        logs = logger.get_logs(request_id=request_id, limit=100)
+        
+        # Get any related errors
+        error_summary = error_analyzer.get_error_summary()
+        
+        debug_info = {
+            "request_id": request_id,
+            "trace": {
+                "status": trace.status.value,
+                "request_type": trace.request_type,
+                "duration_ms": trace.total_duration_ms,
+                "event_count": len(trace.events),
+                "start_time": trace.start_time,
+                "end_time": trace.end_time,
+                "error_summary": trace.error_summary
+            },
+            "performance": performance_summary,
+            "events": [
+                {
+                    "event_id": event.event_id,
+                    "event_type": event.event_type.value,
+                    "component": event.component,
+                    "operation": event.operation,
+                    "status": event.status.value,
+                    "timestamp": event.timestamp,
+                    "duration_ms": event.duration_ms,
+                    "metadata": event.metadata,
+                    "error_info": event.error_info
+                }
+                for event in trace.events
+            ],
+            "logs": [
+                {
+                    "timestamp": log.timestamp,
+                    "level": log.level.value,
+                    "category": log.category.value,
+                    "message": log.message,
+                    "context": log.context,
+                    "duration_ms": log.duration_ms
+                }
+                for log in logs
+            ],
+            "system_errors": error_summary
+        }
+        
+        logger.info(LogCategory.SYSTEM, f"Debug info requested for pipeline {request_id}",
+                   context={"trace_found": trace is not None, "events": len(trace.events) if trace else 0})
+        
+        return jsonify(debug_info)
+        
+    except Exception as e:
+        logger.error(LogCategory.SYSTEM, f"Error getting debug info: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/debug/llm-trace/<request_id>', methods=['GET'])
+def get_llm_trace(request_id):
+    """Get detailed LLM interaction trace for a request"""
+    try:
+        from utils.request_tracer import tracer, TraceEventType
+        from utils.advanced_logger import logger, LogCategory
+        
+        trace = tracer.get_trace(request_id)
+        if not trace:
+            return jsonify({"error": "Request trace not found"}), 404
+        
+        # Filter LLM-related events
+        llm_events = trace.get_events_by_type(TraceEventType.LLM_CALL)
+        
+        llm_trace = {
+            "request_id": request_id,
+            "total_llm_calls": len(llm_events),
+            "llm_interactions": []
+        }
+        
+        for event in llm_events:
+            interaction = {
+                "event_id": event.event_id,
+                "timestamp": event.timestamp,
+                "duration_ms": event.duration_ms,
+                "status": event.status.value,
+                "component": event.component,
+                "operation": event.operation,
+                "metadata": event.metadata,
+                "error_info": event.error_info
+            }
+            
+            # Extract LLM-specific information from metadata
+            if "prompt_length" in event.metadata:
+                interaction["prompt_length"] = event.metadata["prompt_length"]
+            if "response_length" in event.metadata:
+                interaction["response_length"] = event.metadata["response_length"]
+            if "model_used" in event.metadata:
+                interaction["model_used"] = event.metadata["model_used"]
+            if "tokens_used" in event.metadata:
+                interaction["tokens_used"] = event.metadata["tokens_used"]
+            
+            llm_trace["llm_interactions"].append(interaction)
+        
+        logger.info(LogCategory.LLM, f"LLM trace requested for {request_id}",
+                   context={"llm_calls": len(llm_events)})
+        
+        return jsonify(llm_trace)
+        
+    except Exception as e:
+        logger.error(LogCategory.SYSTEM, f"Error getting LLM trace: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/debug/performance-summary', methods=['GET'])
+def get_performance_summary():
+    """Get comprehensive performance summary"""
+    try:
+        from utils.performance_monitor import performance_monitor
+        from utils.request_tracer import tracer
+        from utils.advanced_logger import logger, LogCategory
+        
+        # Get performance monitor summary
+        perf_summary = performance_monitor.get_performance_summary()
+        
+        # Get trace statistics
+        trace_stats = tracer.get_trace_statistics()
+        
+        # Get system resource snapshot
+        system_snapshot = performance_monitor.system_monitor.get_current_snapshot()
+        
+        # Get recent performance alerts
+        recent_alerts = performance_monitor.get_alerts(limit=20, resolved=False)
+        
+        summary = {
+            "system_resources": system_snapshot._asdict() if system_snapshot else None,
+            "performance_metrics": perf_summary,
+            "trace_statistics": trace_stats,
+            "active_alerts": [
+                {
+                    "alert_id": alert.alert_id,
+                    "level": alert.level.value,
+                    "metric_name": alert.metric_name,
+                    "current_value": alert.current_value,
+                    "threshold": alert.threshold,
+                    "message": alert.message,
+                    "timestamp": alert.timestamp.isoformat()
+                }
+                for alert in recent_alerts
+            ],
+            "system_health": {
+                "overall_status": "healthy" if len(recent_alerts) == 0 else "degraded" if len(recent_alerts) < 5 else "critical",
+                "active_alerts_count": len(recent_alerts),
+                "recent_error_rate": trace_stats.get("failed_requests", 0) / max(trace_stats.get("total_requests", 1), 1)
+            }
+        }
+        
+        logger.info(LogCategory.PERFORMANCE, "Performance summary requested",
+                   context={"active_alerts": len(recent_alerts), "trace_count": trace_stats.get("total_requests", 0)})
+        
+        return jsonify(summary)
+        
+    except Exception as e:
+        logger.error(LogCategory.SYSTEM, f"Error getting performance summary: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/debug/error-analysis', methods=['GET'])
+def get_error_analysis():
+    """Get comprehensive error analysis"""
+    try:
+        from utils.error_analyzer import error_analyzer
+        from utils.advanced_logger import logger, LogCategory
+        
+        # Get error summary
+        error_summary = error_analyzer.get_error_summary()
+        
+        # Get trending errors
+        trending = error_analyzer.get_trending_errors(hours=24)
+        
+        analysis = {
+            "summary": error_summary,
+            "trending": trending,
+            "timestamp": time.time()
+        }
+        
+        logger.info(LogCategory.ERROR, "Error analysis requested",
+                   context={"total_errors": error_summary.get("total_errors", 0)})
+        
+        return jsonify(analysis)
+        
+    except Exception as e:
+        logger.error(LogCategory.SYSTEM, f"Error getting error analysis: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/modification-history', methods=['GET'])
@@ -1087,6 +1424,20 @@ def main():
     print("Auto-starting Flutter development server...")
     print("Access the web interface at: http://localhost:5000")
     
+    # Ensure logs directory exists
+    os.makedirs("logs", exist_ok=True)
+    
+    # Log application startup
+    if MONITORING_AVAILABLE:
+        logger.info(LogCategory.SYSTEM, "Flutter server application starting",
+                   context={
+                       "port": 5000,
+                       "project_path": flutter_manager.project_path,
+                       "repo_url": flutter_manager.repo_url is not None,
+                       "dev_mode": flutter_manager.dev_mode
+                   },
+                   tags=["startup", "flask"])
+    
     # Auto-start Flutter development server
     try:
         # Check if port 8080 is available
@@ -1106,15 +1457,57 @@ def main():
         if result.get('error'):
             print(f"Warning: Flutter auto-start failed: {result['error']}")
             print("You can still start Flutter manually via the web interface or API")
+            
+            if MONITORING_AVAILABLE:
+                logger.warn(LogCategory.FLUTTER, "Flutter auto-start failed",
+                           context={
+                               "error": result['error'],
+                               "manual_start_available": True
+                           },
+                           tags=["startup", "flutter", "failed"])
         else:
             print(f"✓ Flutter development server starting (PID: {result.get('pid')})")
             print("Waiting for Flutter to initialize...")
+            
+            if MONITORING_AVAILABLE:
+                logger.info(LogCategory.FLUTTER, "Flutter development server auto-started",
+                           context={
+                               "pid": result.get('pid'),
+                               "port": 8080,
+                               "dev_mode": flutter_manager.dev_mode
+                           },
+                           tags=["startup", "flutter", "success"])
+            
             # Give Flutter a moment to start up
             time.sleep(2)
     except Exception as e:
         print(f"Warning: Failed to auto-start Flutter: {str(e)}")
         print("You can still start Flutter manually via the web interface or API")
+        
+        if MONITORING_AVAILABLE:
+            error_analyzer.analyze_error(
+                component="flutter_startup",
+                operation="auto_start_flutter",
+                message=str(e),
+                context={
+                    "manual_start_available": True,
+                    "port_checked": True
+                }
+            )
     
+    # Log final startup completion
+    if MONITORING_AVAILABLE:
+        logger.info(LogCategory.SYSTEM, "Flask server ready to serve requests",
+                   context={
+                       "host": "0.0.0.0",
+                       "port": 5000,
+                       "debug_mode": True,
+                       "flutter_status": flutter_manager.is_running,
+                       "monitoring_active": True
+                   },
+                   tags=["startup", "ready"])
+    
+    print("🚀 All systems ready!")
     app.run(host='0.0.0.0', port=5000, debug=True)
 
 if __name__ == '__main__':

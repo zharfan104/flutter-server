@@ -13,7 +13,10 @@
       "Bash(flutter:*)",
       "Bash(sudo apt:*)",
       "Bash(sudo apt install:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(grep:*)",
+      "Bash(poetry lock:*)",
+      "Bash(poetry install:*)"
     ],
     "deny": []
   }

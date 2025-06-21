@@ -6,9 +6,26 @@ Analyzes Flutter projects to understand structure, dependencies, and patterns
 import os
 import re
 import yaml
+import time
 from typing import Dict, List, Set, Optional, Tuple
 from dataclasses import dataclass, field
 from pathlib import Path
+
+# Import advanced logging and monitoring
+try:
+    from utils.advanced_logger import logger, LogCategory, LogLevel
+    from utils.performance_monitor import performance_monitor, TimingContext
+    from utils.error_analyzer import error_analyzer
+    MONITORING_AVAILABLE = True
+except ImportError:
+    MONITORING_AVAILABLE = False
+
+# Empty context manager for backward compatibility
+class EmptyContext:
+    def __enter__(self):
+        return self
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
 
 
 @dataclass
@@ -45,6 +62,8 @@ class ProjectStructure:
     dependencies: List[Dependency] = field(default_factory=list)
     total_files: int = 0
     lib_structure: Dict[str, List[str]] = field(default_factory=dict)
+    directories: Dict[str, int] = field(default_factory=dict)
+    patterns_detected: List[str] = field(default_factory=list)
     architecture_pattern: str = "unknown"
 
 
@@ -86,26 +105,49 @@ class FlutterProjectAnalyzer:
         Returns:
             ProjectStructure containing all analyzed data
         """
+        start_time = time.time()
+        
+        if MONITORING_AVAILABLE:
+            logger.info(LogCategory.SYSTEM, "Starting project analysis")
+        
         print(f"Analyzing Flutter project at: {self.project_path}")
         
-        # Initialize project structure
-        project_structure = ProjectStructure(name="Unknown Project")
-        
-        # Analyze pubspec.yaml
-        self._analyze_pubspec(project_structure)
-        
-        # Analyze Dart files
-        self._analyze_dart_files(project_structure)
-        
-        # Analyze project structure
-        self._analyze_lib_structure(project_structure)
-        
-        # Detect architecture pattern
-        self._detect_architecture_pattern(project_structure)
-        
-        print(f"Analysis complete: {len(project_structure.dart_files)} Dart files, {len(project_structure.dependencies)} dependencies")
-        
-        return project_structure
+        try:
+            # Initialize project structure
+            project_structure = ProjectStructure(name="Unknown Project")
+            
+            # Analyze pubspec.yaml
+            self._analyze_pubspec(project_structure)
+            
+            # Analyze Dart files
+            self._analyze_dart_files(project_structure)
+            
+            # Analyze project structure
+            self._analyze_lib_structure(project_structure)
+            
+            # Detect architecture pattern
+            self._detect_architecture_pattern(project_structure)
+            
+            # Simple completion logging
+            if MONITORING_AVAILABLE:
+                logger.info(LogCategory.SYSTEM, "Project analysis completed successfully",
+                           context={
+                               "dart_files": len(project_structure.dart_files),
+                               "dependencies": len(project_structure.dependencies),
+                               "architecture": project_structure.architecture_pattern
+                           })
+            
+            print(f"Analysis complete: {len(project_structure.dart_files)} Dart files, {len(project_structure.dependencies)} dependencies")
+            return project_structure
+            
+        except Exception as e:
+            error_message = str(e)
+            
+            if MONITORING_AVAILABLE:
+                logger.error(LogCategory.SYSTEM, f"Project analysis failed: {error_message}")
+            
+            print(f"Error during project analysis: {error_message}")
+            raise
     
     def _analyze_pubspec(self, structure: ProjectStructure):
         """Analyze pubspec.yaml file"""
@@ -249,9 +291,11 @@ class FlutterProjectAnalyzer:
     def _analyze_lib_structure(self, structure: ProjectStructure):
         """Analyze the lib directory structure"""
         if not self.lib_path.exists():
+            print("lib directory not found")
             return
         
         structure.lib_structure = {}
+        structure.directories = {}
         
         # Walk through lib directory
         for root, dirs, files in os.walk(self.lib_path):
@@ -260,6 +304,9 @@ class FlutterProjectAnalyzer:
             
             if dart_files:
                 structure.lib_structure[str(relative_root)] = dart_files
+                
+            # Count files in each directory for the directories attribute
+            structure.directories[str(relative_root)] = len(dart_files)
         
         print(f"Lib structure: {len(structure.lib_structure)} directories")
     
@@ -271,23 +318,34 @@ class FlutterProjectAnalyzer:
             if dir_parts:
                 directories.update(dir_parts)
         
+        # Initialize patterns_detected list
+        structure.patterns_detected = []
+        
         # Common architecture patterns
         if 'bloc' in directories or any('bloc' in dep.name for dep in structure.dependencies):
             structure.architecture_pattern = 'BLoC'
+            structure.patterns_detected.append('bloc')
         elif 'provider' in directories or any('provider' in dep.name for dep in structure.dependencies):
             structure.architecture_pattern = 'Provider'
+            structure.patterns_detected.append('provider')
         elif 'riverpod' in directories or any('riverpod' in dep.name for dep in structure.dependencies):
             structure.architecture_pattern = 'Riverpod'
+            structure.patterns_detected.append('riverpod')
         elif 'cubit' in directories:
             structure.architecture_pattern = 'Cubit'
+            structure.patterns_detected.append('cubit')
         elif any(keyword in directories for keyword in ['mvvm', 'view_model']):
             structure.architecture_pattern = 'MVVM'
+            structure.patterns_detected.append('mvvm')
         elif any(keyword in directories for keyword in ['mvc', 'controller']):
             structure.architecture_pattern = 'MVC'
+            structure.patterns_detected.append('mvc')
         elif any(keyword in directories for keyword in ['feature', 'features']):
             structure.architecture_pattern = 'Feature-based'
+            structure.patterns_detected.append('feature_based')
         else:
             structure.architecture_pattern = 'Standard'
+            structure.patterns_detected.append('standard')
         
         print(f"Detected architecture pattern: {structure.architecture_pattern}")
     
