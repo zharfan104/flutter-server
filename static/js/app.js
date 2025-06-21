@@ -12,6 +12,7 @@ class FlutterDevServer {
         this.flutterLoadingDelay = 15000; // 15 seconds default loading delay
         this.flutterReadinessInterval = null;
         this.flutterTimerInterval = null;
+        this.flutterLoadingTimeout = null;
         
         this.init();
     }
@@ -82,8 +83,16 @@ class FlutterDevServer {
             // Show loading initially
             this.showFlutterLoading();
             
-            // Start periodic checking for Flutter readiness
-            this.startFlutterReadinessCheck();
+            // Check immediately if Flutter is already ready
+            setTimeout(() => {
+                if (this.isFlutterReady()) {
+                    console.log('✅ Flutter already ready on page load!');
+                    this.hideFlutterLoading();
+                } else {
+                    // Start periodic checking for Flutter readiness
+                    this.startFlutterReadinessCheck();
+                }
+            }, 1000);
             
             // Hide loading when iframe finishes loading (basic fallback)
             flutterFrame.addEventListener('load', () => {
@@ -126,7 +135,7 @@ class FlutterDevServer {
         
         // Simple approach: configurable delay as primary method
         console.log(`⏱️ Starting ${this.flutterLoadingDelay/1000}-second Flutter loading delay...`);
-        setTimeout(() => {
+        this.flutterLoadingTimeout = setTimeout(() => {
             console.log(`✅ ${this.flutterLoadingDelay/1000}-second delay complete, hiding loading overlay`);
             this.hideFlutterLoading();
         }, this.flutterLoadingDelay);
@@ -423,6 +432,19 @@ class FlutterDevServer {
         if (loadingOverlay) {
             loadingOverlay.classList.add('d-none');
             this.stopLoadingTimer();
+            
+            // Clear the timeout as well
+            if (this.flutterLoadingTimeout) {
+                clearTimeout(this.flutterLoadingTimeout);
+                this.flutterLoadingTimeout = null;
+            }
+            
+            // Clear readiness check interval
+            if (this.flutterReadinessInterval) {
+                clearInterval(this.flutterReadinessInterval);
+                this.flutterReadinessInterval = null;
+            }
+            
             console.log('✅ Hiding Flutter loading overlay');
         }
     }
@@ -436,18 +458,21 @@ class FlutterDevServer {
         const maxTime = this.flutterLoadingDelay / 1000; // Convert to seconds
         let remainingTime = maxTime;
         
-        const timerElement = document.getElementById('flutter-loading-timer');
-        const progressElement = document.getElementById('flutter-loading-progress');
+        console.log(`🕐 Starting loading timer: ${remainingTime} seconds`);
         
         // Update immediately
         this.updateLoadingDisplay(remainingTime, maxTime);
         
         this.flutterTimerInterval = setInterval(() => {
             remainingTime--;
+            console.log(`⏳ Timer countdown: ${remainingTime}s remaining`);
             this.updateLoadingDisplay(remainingTime, maxTime);
             
             if (remainingTime <= 0) {
+                console.log('⏰ Timer reached zero, stopping timer');
                 this.stopLoadingTimer();
+                // Also hide the loading overlay when timer completes
+                this.hideFlutterLoading();
             }
         }, 1000);
     }
@@ -648,6 +673,88 @@ class FlutterDevServer {
         const logContainer = document.getElementById('logs');
         if (logContainer) {
             logContainer.innerHTML = '<div class="text-muted">Logs cleared...</div>';
+        }
+    }
+
+    /**
+     * Refresh logs immediately
+     */
+    async refreshLogs() {
+        const logContainer = document.getElementById('logs');
+        if (logContainer) {
+            // Show loading indicator
+            logContainer.innerHTML = '<div class="text-muted"><i class="bi bi-arrow-clockwise"></i> Refreshing logs...</div>';
+        }
+        
+        try {
+            // Force an immediate update of logs by calling the global function
+            if (typeof updateAdvancedLogs === 'function') {
+                await updateAdvancedLogs();
+                console.log('✅ Logs refreshed successfully');
+            } else {
+                // Fallback: fetch logs directly
+                const response = await fetch('/api/logs');
+                const data = await response.json();
+                
+                // Reset counters to force refresh of all logs
+                window.lastFlutterLogCount = 0;
+                window.lastMonitoringLogCount = 0;
+                
+                // Clear the log container first
+                if (logContainer) {
+                    logContainer.innerHTML = '';
+                }
+                
+                // Process all logs as new logs
+                if (data.flutter_logs) {
+                    data.flutter_logs.forEach(logLine => {
+                        if (logLine.trim()) {
+                            let level = 'info';
+                            if (logLine.toLowerCase().includes('error') || logLine.toLowerCase().includes('failed')) {
+                                level = 'error';
+                            } else if (logLine.toLowerCase().includes('warn') || logLine.toLowerCase().includes('warning')) {
+                                level = 'warn';
+                            } else if (logLine.toLowerCase().includes('debug')) {
+                                level = 'debug';
+                            }
+                            this.logAdvanced(level, 'flutter', logLine);
+                        }
+                    });
+                    window.lastFlutterLogCount = data.flutter_logs.length;
+                }
+                
+                // Process monitoring logs
+                if (data.monitoring_logs) {
+                    data.monitoring_logs.forEach(logEntry => {
+                        if (logEntry.message) {
+                            const level = logEntry.level.toLowerCase();
+                            const category = logEntry.category.toLowerCase();
+                            let message = logEntry.message;
+                            
+                            if (logEntry.context && Object.keys(logEntry.context).length > 0) {
+                                const contextStr = Object.entries(logEntry.context)
+                                    .map(([key, value]) => `${key}=${value}`)
+                                    .join(', ');
+                                message += ` (${contextStr})`;
+                            }
+                            
+                            if (logEntry.duration_ms) {
+                                message += ` [${logEntry.duration_ms}ms]`;
+                            }
+                            
+                            this.logAdvanced(level, category, message);
+                        }
+                    });
+                    window.lastMonitoringLogCount = data.monitoring_logs.length;
+                }
+                
+                console.log('✅ Logs refreshed successfully (fallback method)');
+            }
+        } catch (error) {
+            console.error('❌ Failed to refresh logs:', error);
+            if (logContainer) {
+                logContainer.innerHTML = '<div class="text-danger">Failed to refresh logs: ' + error.message + '</div>';
+            }
         }
     }
 
@@ -941,6 +1048,10 @@ function hideFlutterLoading() {
 
 function clearLogs() {
     return window.flutterDevServer?.clearLogs();
+}
+
+function refreshLogs() {
+    return window.flutterDevServer?.refreshLogs();
 }
 
 function quickChatMessage(message) {

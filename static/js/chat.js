@@ -10,6 +10,7 @@ class ChatManager {
         this.lastMessageCount = 0;
         this.isPolling = false;
         this.isSending = false; // Prevent double sending
+        this.currentRequestTimeout = null; // Track current request timeout
         
         this.init();
     }
@@ -240,6 +241,21 @@ class ChatManager {
         this.scrollToBottom();
     }
     
+    addSystemMessage(content) {
+        const systemMessage = {
+            role: 'system',
+            content: content,
+            formatted_time: new Date().toLocaleTimeString('en-US', { 
+                hour12: false, 
+                hour: '2-digit', 
+                minute: '2-digit',
+                second: '2-digit'
+            }),
+            timestamp: Date.now() / 1000
+        };
+        this.addMessageToUI(systemMessage);
+    }
+
     addMessageToUI(message) {
         const container = document.getElementById('messages-container');
         const welcomeMessage = document.getElementById('welcome-message');
@@ -262,8 +278,9 @@ class ChatManager {
         messageDiv.setAttribute('data-message-id', messageIdentifier);
         
         const isUser = message.role === 'user';
-        const avatarIcon = isUser ? 'person-circle' : 'robot';
-        const avatarBg = isUser ? 'bg-primary' : 'bg-success';
+        const isSystem = message.role === 'system';
+        const avatarIcon = isUser ? 'person-circle' : (isSystem ? 'exclamation-triangle' : 'robot');
+        const avatarBg = isUser ? 'bg-primary' : (isSystem ? 'bg-warning' : 'bg-success');
         
         messageDiv.innerHTML = `
             <div class="d-flex ${isUser ? 'justify-content-end' : 'justify-content-start'} align-items-start">
@@ -349,12 +366,23 @@ class ChatManager {
         };
         this.addMessageToUI(userMessage);
         
-        // Update message count to prevent polling from adding the same user message
-        this.lastMessageCount++;
-        console.log('📊 Updated lastMessageCount to:', this.lastMessageCount);
+        // Don't immediately increment lastMessageCount - let polling handle it
+        // This prevents sync issues between frontend and backend
+        console.log('📊 User message added to UI, current lastMessageCount:', this.lastMessageCount);
         
         // Show enhanced loading state
         this.showProcessingIndicator();
+        
+        // Set a fallback timeout to hide the processing indicator if something goes wrong
+        // This prevents the UI from getting stuck forever
+        const fallbackTimeout = setTimeout(() => {
+            console.log('⚠️ Fallback timeout triggered - hiding processing indicator');
+            this.hideProcessingIndicator();
+            this.addSystemMessage('Request timed out. The AI might still be processing your request. Please check back in a moment.');
+        }, 60000); // 60 seconds timeout
+        
+        // Store timeout ID so we can clear it when response arrives
+        this.currentRequestTimeout = fallbackTimeout;
         
         try {
             const response = await fetch('/api/chat/send', {
@@ -390,6 +418,12 @@ class ChatManager {
             
             // Reset sending flag on error
             this.isSending = false;
+            
+            // Clear the timeout on error
+            if (this.currentRequestTimeout) {
+                clearTimeout(this.currentRequestTimeout);
+                this.currentRequestTimeout = null;
+            }
             
             // Restore the message to input on error
             messageInput.value = message;
@@ -486,31 +520,64 @@ class ChatManager {
             const response = await fetch(`/api/chat/history?conversation_id=${this.currentConversationId}`);
             const data = await response.json();
             
-            if (data.status === 'success' && data.messages.length > this.lastMessageCount) {
-                // New messages arrived
-                console.log('🔔 Polling found new messages:', data.messages.length, 'vs', this.lastMessageCount);
-                const newMessages = data.messages.slice(this.lastMessageCount);
-                console.log('📥 Processing', newMessages.length, 'new messages');
-                newMessages.forEach(message => {
-                    this.addMessageToUI(message);
-                });
+            if (data.status === 'success') {
+                // Check if there are any new messages (more robust approach)
+                const currentMessages = data.messages;
+                const currentCount = currentMessages.length;
                 
-                this.lastMessageCount = data.messages.length;
-                console.log('📊 Updated lastMessageCount to:', this.lastMessageCount);
+                console.log('🔔 Polling check:', currentCount, 'messages vs', this.lastMessageCount, 'known');
                 
-                // Check if the last message is from assistant - if so, hide loading indicators
-                const lastMessage = newMessages[newMessages.length - 1];
-                if (lastMessage && lastMessage.role === 'assistant') {
-                    this.hideProcessingIndicator();
+                if (currentCount > this.lastMessageCount) {
+                    // New messages arrived
+                    console.log('🔔 Polling found new messages:', currentCount, 'vs', this.lastMessageCount);
+                    const newMessages = currentMessages.slice(this.lastMessageCount);
+                    console.log('📥 Processing', newMessages.length, 'new messages');
                     
-                    // Check if the message indicates code changes were made
-                    if (this.messageIndicatesCodeChanges(lastMessage.content)) {
-                        this.triggerFlutterReload();
+                    // Filter out any messages that might already be in the UI to prevent duplicates
+                    const container = document.getElementById('messages-container');
+                    const existingMessageIds = new Set();
+                    container.querySelectorAll('[data-message-id]').forEach(el => {
+                        existingMessageIds.add(el.getAttribute('data-message-id'));
+                    });
+                    
+                    newMessages.forEach(message => {
+                        const messageId = message.message_id || `${message.role}-${message.content.length}-${message.content.substring(0, 20).replace(/[^a-zA-Z0-9]/g, '')}`;
+                        if (!existingMessageIds.has(messageId)) {
+                            this.addMessageToUI(message);
+                        } else {
+                            console.log('🔄 Skipping duplicate message in polling:', messageId);
+                        }
+                    });
+                    
+                    this.lastMessageCount = currentCount;
+                    console.log('📊 Updated lastMessageCount to:', this.lastMessageCount);
+                    
+                    // Check if the last message is from assistant - if so, hide loading indicators
+                    const lastMessage = newMessages[newMessages.length - 1];
+                    if (lastMessage && lastMessage.role === 'assistant') {
+                        console.log('✅ Assistant response received, hiding processing indicator');
+                        this.hideProcessingIndicator();
+                        
+                        // Clear the fallback timeout since we got a response
+                        if (this.currentRequestTimeout) {
+                            clearTimeout(this.currentRequestTimeout);
+                            this.currentRequestTimeout = null;
+                        }
+                        
+                        // Check if the message indicates code changes were made
+                        if (this.messageIndicatesCodeChanges(lastMessage.content)) {
+                            this.triggerFlutterReload();
+                        }
                     }
+                    
+                    // Update conversations list to reflect new activity
+                    this.loadConversations();
+                } else if (this.lastMessageCount > currentCount) {
+                    // Handle case where backend count is less (conversation was cleared, etc.)
+                    console.log('🔄 Backend has fewer messages, resyncing');
+                    this.renderMessages(currentMessages);
+                    this.lastMessageCount = currentCount;
                 }
-                
-                // Update conversations list to reflect new activity
-                this.loadConversations();
             }
         } catch (error) {
             console.error('Failed to check for new messages:', error);

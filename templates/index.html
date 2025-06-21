@@ -274,7 +274,7 @@
                 <!-- Tab Content -->
                 <div class="tab-content" id="monitoring-tab-content">
                     <!-- System Logs Tab -->
-                    <div class="tab-pane fade" id="logs-panel" role="tabpanel" style="height: 200px; background: #ffffff;">
+                    <div class="tab-pane fade show active" id="logs-panel" role="tabpanel" style="height: 200px; background: #ffffff;">
                         <div class="p-2">
                             <!-- Log Controls -->
                             <div class="d-flex gap-2 mb-2 flex-wrap">
@@ -294,7 +294,10 @@
                                     <option value="flutter" style="background-color: #ffffff !important; color: #212529 !important;">Flutter</option>
                                 </select>
                                 <input type="text" class="form-control form-control-sm flex-grow-1" id="log-search" placeholder="Search..." style="background-color: #ffffff !important; color: #212529 !important; border: 1px solid #ced4da !important; min-width: 120px;">
-                                <button class="btn btn-sm btn-outline-danger" onclick="clearLogs()">
+                                <button class="btn btn-sm btn-outline-primary" onclick="refreshLogs()" title="Refresh Logs">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="clearLogs()" title="Clear Logs">
                                     <i class="bi bi-trash"></i>
                                 </button>
                             </div>

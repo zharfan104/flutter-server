@@ -16,7 +16,10 @@
       "Bash(chmod:*)",
       "Bash(grep:*)",
       "Bash(poetry lock:*)",
-      "Bash(poetry install:*)"
+      "Bash(poetry install:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(rg:*)"
     ],
     "deny": []
   }
