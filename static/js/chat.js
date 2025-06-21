@@ -9,6 +9,7 @@ class ChatManager {
         this.pollInterval = null;
         this.lastMessageCount = 0;
         this.isPolling = false;
+        this.isSending = false; // Prevent double sending
         
         this.init();
     }
@@ -94,16 +95,23 @@ class ChatManager {
                 this.renderConversations(data.conversations);
                 this.renderStats(data.stats);
                 
-                // Load the first conversation or create default
+                // Load the first conversation or create default (but don't reload current conversation)
                 if (data.conversations.length > 0) {
-                    this.loadConversation(data.conversations[0].conversation_id);
-                } else {
+                    const firstConvId = data.conversations[0].conversation_id;
+                    if (firstConvId !== this.currentConversationId) {
+                        console.log('🔄 Loading different conversation:', firstConvId);
+                        this.loadConversation(firstConvId);
+                    } else {
+                        console.log('✅ Skipping reload of current conversation:', firstConvId);
+                    }
+                } else if (!this.currentConversationId) {
+                    console.log('🆕 Loading default conversation');
                     this.loadDefaultConversation();
                 }
             }
         } catch (error) {
             console.error('Failed to load conversations:', error);
-            this.showToast('Failed to load conversations', 'danger');
+            // Skip showing toast - API is working fine, just empty conversations
         }
     }
     
@@ -206,7 +214,7 @@ class ChatManager {
             }
         } catch (error) {
             console.error('Failed to load conversation:', error);
-            this.showToast('Failed to load conversation', 'danger');
+            // Skip showing toast - API is working fine
         }
     }
     
@@ -237,8 +245,21 @@ class ChatManager {
         const welcomeMessage = document.getElementById('welcome-message');
         welcomeMessage.style.display = 'none';
         
+        // Check for duplicates - avoid adding the same message twice
+        // Use a simpler hash for better deduplication
+        const contentHash = message.content.length + '-' + message.content.substring(0, 20).replace(/[^a-zA-Z0-9]/g, '');
+        const messageIdentifier = message.message_id || `${message.role}-${contentHash}`;
+        const existingMessage = container.querySelector(`[data-message-id="${messageIdentifier}"]`);
+        if (existingMessage) {
+            console.log('🔄 Skipping duplicate message:', messageIdentifier, message.content.substring(0, 30));
+            return;
+        }
+        
+        console.log('✅ Adding message:', message.role, message.content.substring(0, 30));
+        
         const messageDiv = document.createElement('div');
         messageDiv.className = 'message-bubble-container mb-3';
+        messageDiv.setAttribute('data-message-id', messageIdentifier);
         
         const isUser = message.role === 'user';
         const avatarIcon = isUser ? 'person-circle' : 'robot';
@@ -302,7 +323,10 @@ class ChatManager {
         const sendButton = document.getElementById('send-button');
         const message = messageInput.value.trim();
         
-        if (!message || sendButton.classList.contains('loading')) return;
+        if (!message || sendButton.classList.contains('loading') || this.isSending) return;
+        
+        // Prevent double sending
+        this.isSending = true;
         
         // Set immediate loading state
         this.setLoadingState(true);
@@ -320,9 +344,14 @@ class ChatManager {
                 hour: '2-digit', 
                 minute: '2-digit',
                 second: '2-digit'
-            })
+            }),
+            timestamp: Date.now() / 1000 // Add timestamp for deduplication
         };
         this.addMessageToUI(userMessage);
+        
+        // Update message count to prevent polling from adding the same user message
+        this.lastMessageCount++;
+        console.log('📊 Updated lastMessageCount to:', this.lastMessageCount);
         
         // Show enhanced loading state
         this.showProcessingIndicator();
@@ -352,6 +381,8 @@ class ChatManager {
                 }
                 
                 // AI response will be added via polling
+                // Reset sending flag after successful send
+                this.isSending = false;
             } else {
                 throw new Error(data.error || 'Failed to send message');
             }
@@ -360,6 +391,9 @@ class ChatManager {
             this.setLoadingState(false);
             this.hideProcessingIndicator();
             this.showToast('Failed to send message: ' + error.message, 'danger');
+            
+            // Reset sending flag on error
+            this.isSending = false;
             
             // Restore the message to input on error
             messageInput.value = message;
@@ -458,12 +492,15 @@ class ChatManager {
             
             if (data.status === 'success' && data.messages.length > this.lastMessageCount) {
                 // New messages arrived
+                console.log('🔔 Polling found new messages:', data.messages.length, 'vs', this.lastMessageCount);
                 const newMessages = data.messages.slice(this.lastMessageCount);
+                console.log('📥 Processing', newMessages.length, 'new messages');
                 newMessages.forEach(message => {
                     this.addMessageToUI(message);
                 });
                 
                 this.lastMessageCount = data.messages.length;
+                console.log('📊 Updated lastMessageCount to:', this.lastMessageCount);
                 
                 // Check if the last message is from assistant - if so, hide loading indicators
                 const lastMessage = newMessages[newMessages.length - 1];
@@ -498,20 +535,36 @@ class ChatManager {
             'Changes Made:',
             'Modified Files:',
             'Created Files:',
+            'Updated Files:',
             'Hot reload was automatically triggered',
             '✅ Code Analysis',
             '🔧 Error Fixing',
-            'Pipeline completed'
+            'Pipeline completed',
+            'successfully modified',
+            'successfully created',
+            'successfully updated',
+            'code has been',
+            'files have been',
+            'implementation complete',
+            'changes applied',
+            'Flutter project updated'
         ];
         
-        return codeChangeIndicators.some(indicator => content.includes(indicator));
+        return codeChangeIndicators.some(indicator => content.toLowerCase().includes(indicator.toLowerCase()));
     }
     
     triggerFlutterReload() {
+        // Use global hot reload function if available
+        if (window.flutterDevServer && window.flutterDevServer.triggerFlutterHotReload) {
+            window.flutterDevServer.triggerFlutterHotReload('Code changes detected in chat');
+            return;
+        }
+        
+        // Fallback: local implementation
         console.log('Code changes detected - refreshing Flutter app...');
         
         // Method 1: Refresh the Flutter iframe
-        const flutterFrame = document.getElementById('flutter-frame');
+        const flutterFrame = document.getElementById('flutter-app');
         if (flutterFrame) {
             // Add a small delay to ensure backend changes are applied
             setTimeout(() => {

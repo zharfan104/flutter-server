@@ -869,11 +869,20 @@ function openFullScreen() {
 }
 
 function quickChatMessage(message) {
-    const messageInput = document.getElementById('message-input');
-    messageInput.value = message;
-    messageInput.dispatchEvent(new Event('input'));
-    const chatForm = document.getElementById('chat-form');
-    chatForm.dispatchEvent(new Event('submit'));
+    // Use ChatManager if available, otherwise open chat page
+    if (window.chatManager && window.chatManager.sendMessage) {
+        const messageInput = document.getElementById('message-input');
+        if (messageInput) {
+            messageInput.value = message;
+            messageInput.dispatchEvent(new Event('input'));
+            // Use ChatManager's sendMessage directly to avoid double event handling
+            window.chatManager.sendMessage();
+        }
+    } else {
+        // Fallback: open chat page in new tab
+        const chatUrl = `/chat?message=${encodeURIComponent(message)}`;
+        window.open(chatUrl, '_blank');
+    }
 }
 
 // Initialize both dashboard and chat functionality

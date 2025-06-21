@@ -271,6 +271,37 @@ class FlutterDevServer {
     }
     
     /**
+     * Trigger Flutter hot reload with multiple methods
+     */
+    triggerFlutterHotReload(reason = 'Code changes detected') {
+        console.log(`${reason} - triggering Flutter hot reload...`);
+        
+        // Method 1: Refresh the Flutter iframe
+        const flutterFrame = document.getElementById('flutter-app');
+        if (flutterFrame) {
+            // Add a small delay to ensure backend changes are applied
+            setTimeout(() => {
+                flutterFrame.src = flutterFrame.src;
+                this.showToast('Flutter app refreshed: ' + reason, 'info');
+            }, 1000);
+        }
+        
+        // Method 2: Try to trigger hot reload via API (as backup)
+        setTimeout(() => {
+            fetch('/api/hot-reload', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            }).then(response => {
+                console.log('Hot reload API response:', response.status);
+            }).catch(error => {
+                console.log('Hot reload API call failed (this is normal):', error);
+            });
+        }, 500);
+    }
+    
+    /**
      * Test Flutter connection
      */
     async testFlutter() {
@@ -653,6 +684,10 @@ function refreshApp() {
 
 function testFlutter() {
     return window.flutterDevServer?.testFlutter();
+}
+
+function triggerFlutterHotReload(reason) {
+    return window.flutterDevServer?.triggerFlutterHotReload(reason);
 }
 
 function clearLogs() {
@@ -1051,6 +1086,13 @@ function monitorPipelineProgress(requestId) {
                         data.status,
                         data.summary || data.error || ''
                     );
+                    
+                    // Trigger hot reload if pipeline completed successfully
+                    if (data.status === 'completed') {
+                        setTimeout(() => {
+                            window.flutterDevServer.triggerFlutterHotReload('AI pipeline completed successfully');
+                        }, 2000); // Wait 2 seconds for file system changes to settle
+                    }
                 }
                 return;
             }
