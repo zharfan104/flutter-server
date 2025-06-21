@@ -35,6 +35,8 @@ kill_processes() {
     print_status "Killing Flutter processes..."
     pkill -f "flutter run" 2>/dev/null || true
     pkill -f "flutter.*web-server" 2>/dev/null || true
+    pkill -f "dart:flut" 2>/dev/null || true
+    pkill -9 -f "dart" 2>/dev/null || true
     
     # Kill processes on specific ports
     print_status "Freeing up ports 5000 and 8080..."
@@ -53,6 +55,13 @@ kill_processes() {
     
     # Give processes time to cleanup
     sleep 2
+    
+    # Double-check ports are free
+    if lsof -Pi :8080 -sTCP:LISTEN -t >/dev/null 2>&1; then
+        print_warning "Port 8080 still in use, forcing cleanup..."
+        lsof -Pi :8080 -sTCP:LISTEN -t | xargs kill -9 2>/dev/null || true
+        sleep 1
+    fi
     
     print_status "Process cleanup complete!"
 }

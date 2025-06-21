@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+
+{% block title %}Project Overview - Flutter Development Server{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Project Info -->
+    <div class="col-lg-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-info-circle"></i>
+                    Project Information
+                </h5>
+            </div>
+            <div class="card-body">
+                <dl class="row">
+                    <dt class="col-sm-4">Name:</dt>
+                    <dd class="col-sm-8" id="project-name">--</dd>
+                    
+                    <dt class="col-sm-4">Type:</dt>
+                    <dd class="col-sm-8">Flutter Application</dd>
+                    
+                    <dt class="col-sm-4">Dart Files:</dt>
+                    <dd class="col-sm-8" id="dart-files-count">--</dd>
+                    
+                    <dt class="col-sm-4">Dependencies:</dt>
+                    <dd class="col-sm-8" id="dependencies-count">--</dd>
+                    
+                    <dt class="col-sm-4">Git Status:</dt>
+                    <dd class="col-sm-8">
+                        <span class="badge bg-success" id="git-status">Clean</span>
+                    </dd>
+                </dl>
+                
+                <hr>
+                
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-primary" onclick="analyzeProject()">
+                        <i class="bi bi-search"></i>
+                        Analyze Project
+                    </button>
+                    <button class="btn btn-outline-info" onclick="generateDocs()">
+                        <i class="bi bi-file-earmark-text"></i>
+                        Generate Documentation
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Recent Activity -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="bi bi-clock-history"></i>
+                    Recent Activity
+                </h6>
+            </div>
+            <div class="card-body">
+                <div id="recent-activity" style="max-height: 200px; overflow-y: auto;">
+                    <div class="text-muted small">No recent activity</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Dependency Graph -->
+    <div class="col-lg-8 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-diagram-3"></i>
+                    Project Structure
+                </h5>
+                <div>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="refreshStructure()">
+                        <i class="bi bi-arrow-clockwise"></i>
+                        Refresh
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="exportStructure()">
+                        <i class="bi bi-download"></i>
+                        Export
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="project-structure" style="height: 400px; border: 1px solid #dee2e6; border-radius: 4px;">
+                    <!-- Project structure visualization will be rendered here -->
+                    <div class="d-flex align-items-center justify-content-center h-100">
+                        <div class="text-center">
+                            <i class="bi bi-diagram-3-fill text-muted" style="font-size: 3rem;"></i>
+                            <p class="text-muted mt-2">Project structure will be visualized here</p>
+                            <button class="btn btn-primary" onclick="loadProjectStructure()">
+                                Load Structure
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Dependencies -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-box"></i>
+                    Dependencies
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                    <table class="table table-sm" id="dependencies-table">
+                        <thead>
+                            <tr>
+                                <th>Package</th>
+                                <th>Version</th>
+                                <th>Type</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="3" class="text-center text-muted">
+                                    <div class="spinner-border spinner-border-sm me-2"></div>
+                                    Loading dependencies...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <hr>
+                
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-success" onclick="addDependency()">
+                        <i class="bi bi-plus-circle"></i>
+                        Add
+                    </button>
+                    <button class="btn btn-sm btn-outline-warning" onclick="updateDependencies()">
+                        <i class="bi bi-arrow-up-circle"></i>
+                        Update
+                    </button>
+                    <button class="btn btn-sm btn-outline-info" onclick="checkOutdated()">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        Check Outdated
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- File Analysis -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-file-earmark-code"></i>
+                    File Analysis
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="file-analysis">
+                    <!-- Charts will be rendered here -->
+                    <canvas id="file-types-chart" width="400" height="200"></canvas>
+                </div>
+                
+                <hr>
+                
+                <div class="row text-center">
+                    <div class="col-4">
+                        <h6 class="text-primary" id="dart-files">--</h6>
+                        <small class="text-muted">Dart Files</small>
+                    </div>
+                    <div class="col-4">
+                        <h6 class="text-success" id="widget-files">--</h6>
+                        <small class="text-muted">Widgets</small>
+                    </div>
+                    <div class="col-4">
+                        <h6 class="text-warning" id="model-files">--</h6>
+                        <small class="text-muted">Models</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Git Information -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-git"></i>
+                    Git Repository
+                </h5>
+            </div>
+            <div class="card-body">
+                <dl class="row">
+                    <dt class="col-sm-4">Branch:</dt>
+                    <dd class="col-sm-8" id="git-branch">--</dd>
+                    
+                    <dt class="col-sm-4">Last Commit:</dt>
+                    <dd class="col-sm-8" id="git-last-commit">--</dd>
+                    
+                    <dt class="col-sm-4">Status:</dt>
+                    <dd class="col-sm-8" id="git-detailed-status">--</dd>
+                </dl>
+                
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-primary" onclick="gitPull()">
+                        <i class="bi bi-download"></i>
+                        Pull
+                    </button>
+                    <button class="btn btn-sm btn-outline-success" onclick="gitCommit()">
+                        <i class="bi bi-check2-square"></i>
+                        Commit
+                    </button>
+                    <button class="btn btn-sm btn-outline-warning" onclick="gitPush()">
+                        <i class="bi bi-upload"></i>
+                        Push
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Build Information -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-gear"></i>
+                    Build & Performance
+                </h5>
+            </div>
+            <div class="card-body">
+                <dl class="row">
+                    <dt class="col-sm-6">Build Size:</dt>
+                    <dd class="col-sm-6" id="build-size">--</dd>
+                    
+                    <dt class="col-sm-6">Last Build:</dt>
+                    <dd class="col-sm-6" id="last-build">--</dd>
+                    
+                    <dt class="col-sm-6">Hot Reload Time:</dt>
+                    <dd class="col-sm-6" id="reload-time">--</dd>
+                    
+                    <dt class="col-sm-6">Compilation Time:</dt>
+                    <dd class="col-sm-6" id="compile-time">--</dd>
+                </dl>
+                
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-primary" onclick="buildRelease()">
+                        <i class="bi bi-box-arrow-up"></i>
+                        Build Release
+                    </button>
+                    <button class="btn btn-sm btn-outline-info" onclick="analyzeBundle()">
+                        <i class="bi bi-pie-chart"></i>
+                        Analyze Bundle
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Dependency Modal -->
+<div class="modal fade" id="addDependencyModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Dependency</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="package-name" class="form-label">Package Name</label>
+                    <input type="text" class="form-control" id="package-name" placeholder="e.g., http, provider, shared_preferences">
+                </div>
+                <div class="mb-3">
+                    <label for="package-version" class="form-label">Version (optional)</label>
+                    <input type="text" class="form-control" id="package-version" placeholder="e.g., ^1.0.0 or latest">
+                </div>
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="dev-dependency">
+                        <label class="form-check-label" for="dev-dependency">
+                            Development dependency
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="confirmAddDependency()">Add Dependency</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<!-- Chart.js for visualizations -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='js/project.js') }}"></script>
+{% endblock %}

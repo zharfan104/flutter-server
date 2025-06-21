@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+
+{% block title %}Code Editor - Flutter Development Server{% endblock %}
+
+{% block extra_head %}
+<!-- Monaco Editor -->
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@latest/min/vs/loader.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="row h-100">
+    <!-- File Explorer Sidebar -->
+    <div class="col-lg-3 mb-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="bi bi-folder"></i>
+                    Project Files
+                </h6>
+                <button class="btn btn-sm btn-outline-secondary" onclick="refreshFileTree()">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <div id="file-tree" style="height: 400px; overflow-y: auto;">
+                    <!-- File tree will be populated here -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- AI Modification Panel -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="bi bi-robot"></i>
+                    AI Code Modification
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="ai-request" class="form-label">Describe changes:</label>
+                    <textarea class="form-control" id="ai-request" rows="3" 
+                              placeholder="E.g., Add user authentication, Create a login screen, Fix the button styling..."></textarea>
+                </div>
+                <button class="btn btn-primary w-100" onclick="requestAIModification()">
+                    <i class="bi bi-magic"></i>
+                    Generate Changes
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Editor Area -->
+    <div class="col-lg-9">
+        <div class="card h-100">
+            <div class="card-header">
+                <!-- File Tabs -->
+                <ul class="nav nav-tabs card-header-tabs" id="file-tabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="main-dart-tab" data-bs-toggle="tab" 
+                                data-bs-target="#main-dart" type="button" role="tab">
+                            <i class="bi bi-file-earmark-code"></i>
+                            main.dart
+                            <span class="ms-2 badge bg-secondary" id="main-dart-status">●</span>
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="pubspec-tab" data-bs-toggle="tab" 
+                                data-bs-target="#pubspec" type="button" role="tab">
+                            <i class="bi bi-file-earmark-text"></i>
+                            pubspec.yaml
+                            <span class="ms-2 badge bg-secondary" id="pubspec-status">●</span>
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="btn btn-sm btn-outline-secondary ms-2" onclick="addNewTab()">
+                            <i class="bi bi-plus"></i>
+                        </button>
+                    </li>
+                </ul>
+            </div>
+            
+            <div class="card-body p-0">
+                <!-- Editor Controls -->
+                <div class="bg-light border-bottom p-2">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <button class="btn btn-sm btn-success" onclick="saveFile()">
+                                <i class="bi bi-floppy"></i>
+                                Save & Reload
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="loadFile()">
+                                <i class="bi bi-arrow-clockwise"></i>
+                                Reload
+                            </button>
+                            <button class="btn btn-sm btn-outline-primary" onclick="formatCode()">
+                                <i class="bi bi-code"></i>
+                                Format
+                            </button>
+                        </div>
+                        <div>
+                            <span class="badge bg-info" id="editor-status">Ready</span>
+                            <span class="text-muted small ms-2" id="cursor-position">Ln 1, Col 1</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Tab Content -->
+                <div class="tab-content" id="editor-tab-content">
+                    <div class="tab-pane fade show active" id="main-dart" role="tabpanel">
+                        <div id="monaco-editor" style="height: 500px;"></div>
+                    </div>
+                    <div class="tab-pane fade" id="pubspec" role="tabpanel">
+                        <div id="pubspec-editor" style="height: 500px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Editor Footer with Mini Console -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="bi bi-terminal"></i>
+                    Console Output
+                </h6>
+            </div>
+            <div class="card-body p-2">
+                <div id="mini-console" style="height: 150px; overflow-y: auto; font-family: monospace; font-size: 0.85rem; background: #1e1e1e; color: #d4d4d4; padding: 10px; border-radius: 4px;">
+                    <div class="text-success">Flutter Development Console</div>
+                    <div class="text-muted">Ready for commands...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- File Selection Modal -->
+<div class="modal fade" id="fileModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Open File</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <input type="text" class="form-control" id="file-search" placeholder="Search files...">
+                </div>
+                <div id="file-list" style="max-height: 300px; overflow-y: auto;">
+                    <!-- File list will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- AI Modification Progress Modal -->
+<div class="modal fade" id="aiModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-robot"></i>
+                    AI Code Generation
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>Progress</span>
+                        <span id="ai-progress-text">Analyzing request...</span>
+                    </div>
+                    <div class="progress">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             id="ai-progress-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div id="ai-log" style="height: 300px; overflow-y: auto; font-family: monospace; font-size: 0.9rem; background: #f8f9fa; padding: 10px; border-radius: 4px;">
+                    <!-- AI progress log will appear here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-danger" id="cancel-ai" onclick="cancelAIGeneration()">
+                    <i class="bi bi-stop-circle"></i>
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/editor.js') }}"></script>
+{% endblock %}

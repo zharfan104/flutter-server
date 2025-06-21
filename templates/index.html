@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Flutter Development Server{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Status Cards -->
+    <div class="col-lg-3 col-md-6 mb-4">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title">Flutter Status</h6>
+                        <h4 id="flutter-status-text">Checking...</h4>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-phone-flip" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-3 col-md-6 mb-4">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title">Project Files</h6>
+                        <h4 id="file-count">--</h4>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-file-earmark-code" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-3 col-md-6 mb-4">
+        <div class="card text-white bg-warning">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title">Hot Reloads</h6>
+                        <h4 id="reload-count">0</h4>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-arrow-clockwise" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-3 col-md-6 mb-4">
+        <div class="card text-white bg-info">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title">Uptime</h6>
+                        <h4 id="uptime">--:--</h4>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="bi bi-clock" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Quick Actions -->
+    <div class="col-lg-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-lightning-charge"></i>
+                    Quick Actions
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-success" onclick="startFlutter()">
+                        <i class="bi bi-play-circle"></i>
+                        Start Flutter
+                    </button>
+                    <button class="btn btn-primary" onclick="hotReload()">
+                        <i class="bi bi-arrow-clockwise"></i>
+                        Hot Reload
+                    </button>
+                    <a href="/chat" class="btn btn-info">
+                        <i class="bi bi-chat-dots"></i>
+                        AI Chat Assistant
+                    </a>
+                    <button class="btn btn-secondary" onclick="checkStatus()">
+                        <i class="bi bi-info-circle"></i>
+                        Check Status
+                    </button>
+                    <button class="btn btn-warning" onclick="getLogs()">
+                        <i class="bi bi-journal-text"></i>
+                        View Logs
+                    </button>
+                </div>
+                
+                <hr>
+                
+                <div class="mb-3">
+                    <label for="messageInput" class="form-label">Test Message</label>
+                    <input type="text" class="form-control" id="messageInput" 
+                           value="Hello from Hot Reload!" placeholder="Enter custom message">
+                </div>
+                <button class="btn btn-outline-primary w-100" onclick="updateCounter()">
+                    <i class="bi bi-pencil-square"></i>
+                    Update Counter Demo
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Flutter App Preview -->
+    <div class="col-lg-8 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-phone"></i>
+                    Flutter App Preview
+                </h5>
+                <button class="btn btn-sm btn-outline-secondary" onclick="refreshApp()">
+                    <i class="bi bi-arrow-clockwise"></i>
+                    Refresh
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <div style="height: 600px; border: 1px solid #dee2e6;">
+                    <iframe id="flutter-app" src="/app" 
+                            style="width: 100%; height: 100%; border: none;"
+                            title="Flutter App">
+                        <div class="d-flex align-items-center justify-content-center h-100">
+                            <div class="text-center">
+                                <i class="bi bi-phone-fill text-muted" style="font-size: 3rem;"></i>
+                                <p class="text-muted mt-2">Flutter app will appear here once started.</p>
+                                <p class="text-muted">Click "Start Flutter" and wait 30-60 seconds.</p>
+                            </div>
+                        </div>
+                    </iframe>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- AI Chat Activity -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-chat-dots"></i>
+                    AI Chat Activity
+                </h5>
+                <a href="/chat" class="btn btn-sm btn-primary">
+                    <i class="bi bi-arrow-right"></i>
+                    Open Chat
+                </a>
+            </div>
+            <div class="card-body">
+                <div id="chat-activity" style="height: 200px; overflow-y: auto;">
+                    <div class="text-center text-muted py-3">
+                        <div class="spinner-border spinner-border-sm" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="small mt-2">Loading chat activity...</p>
+                    </div>
+                </div>
+                <hr>
+                <div class="d-flex justify-content-between align-items-center">
+                    <small class="text-muted">Quick Start:</small>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary btn-sm" onclick="quickChatMessage('Add a login screen')">
+                            Login Screen
+                        </button>
+                        <button class="btn btn-outline-primary btn-sm" onclick="quickChatMessage('Create a settings page')">
+                            Settings
+                        </button>
+                        <button class="btn btn-outline-primary btn-sm" onclick="quickChatMessage('Fix my navigation')">
+                            Fix Nav
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Activity Log -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-activity"></i>
+                    System Activity Log
+                </h5>
+                <button class="btn btn-sm btn-outline-secondary" onclick="clearLogs()">
+                    <i class="bi bi-trash"></i>
+                    Clear
+                </button>
+            </div>
+            <div class="card-body">
+                <div id="logs" style="height: 300px; overflow-y: auto; font-family: monospace; font-size: 0.9rem; background: #f8f9fa; padding: 10px; border-radius: 4px;">
+                    <div class="text-muted">Activity log will appear here...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- API Endpoints -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-api"></i>
+                    API Endpoints
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive" style="height: 300px; overflow-y: auto;">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Method</th>
+                                <th>Endpoint</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span class="badge bg-success">GET</span></td>
+                                <td><code>/api/health</code></td>
+                                <td>Check server health</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-warning">POST</span></td>
+                                <td><code>/api/start</code></td>
+                                <td>Start Flutter</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-success">GET</span></td>
+                                <td><code>/api/status</code></td>
+                                <td>Get Flutter status</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-warning">POST</span></td>
+                                <td><code>/api/hot-reload</code></td>
+                                <td>Trigger hot reload</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-primary">PUT</span></td>
+                                <td><code>/api/files</code></td>
+                                <td>Update files</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge bg-success">GET</span></td>
+                                <td><code>/api/logs</code></td>
+                                <td>Get Flutter logs</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

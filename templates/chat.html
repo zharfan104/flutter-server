@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+
+{% block title %}AI Chat Assistant{% endblock %}
+
+{% block content %}
+<div class="container-fluid h-100">
+    <div class="row h-100">
+        <!-- Sidebar with conversations -->
+        <div class="col-lg-3 col-md-4 d-none d-md-block bg-light border-end" style="height: calc(100vh - 60px); overflow-y: auto;">
+            <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
+                <h6 class="mb-0">Conversations</h6>
+                <button class="btn btn-sm btn-primary" onclick="startNewConversation()">
+                    <i class="bi bi-plus-circle"></i>
+                </button>
+            </div>
+            
+            <div id="conversations-list" class="p-2">
+                <!-- Conversations will be loaded here -->
+                <div class="text-center text-muted py-3">
+                    <div class="spinner-border spinner-border-sm" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="small mt-2">Loading conversations...</p>
+                </div>
+            </div>
+            
+            <!-- Stats -->
+            <div class="border-top p-3 mt-auto">
+                <div id="chat-stats" class="small text-muted">
+                    <!-- Stats will be loaded here -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- Main chat area -->
+        <div class="col-lg-9 col-md-8 d-flex flex-column" style="height: calc(100vh - 60px);">
+            <!-- Chat header -->
+            <div class="bg-white border-bottom p-3 d-flex justify-content-between align-items-center">
+                <div>
+                    <h5 class="mb-0">
+                        <i class="bi bi-robot text-primary me-2"></i>
+                        <span id="current-conversation-title">Flutter AI Assistant</span>
+                    </h5>
+                    <small class="text-muted">Ask me anything about Flutter development!</small>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-sm btn-outline-secondary" onclick="clearCurrentConversation()" title="Clear conversation">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="exportConversation()" title="Export conversation">
+                        <i class="bi bi-download"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Messages area -->
+            <div id="messages-container" class="flex-grow-1 overflow-auto p-3" style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);">
+                <!-- Welcome message -->
+                <div id="welcome-message" class="text-center text-muted py-5">
+                    <div class="mb-3">
+                        <i class="bi bi-chat-dots display-1 text-primary"></i>
+                    </div>
+                    <h4>Welcome to Flutter AI Assistant!</h4>
+                    <p class="lead">I'm here to help you with your Flutter development.</p>
+                    <div class="row justify-content-center">
+                        <div class="col-md-8">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h6>Try asking me:</h6>
+                                    <ul class="list-unstyled small">
+                                        <li><i class="bi bi-arrow-right text-primary me-2"></i>"Add a login screen to my app"</li>
+                                        <li><i class="bi bi-arrow-right text-primary me-2"></i>"How do I implement dark mode?"</li>
+                                        <li><i class="bi bi-arrow-right text-primary me-2"></i>"Create a bottom navigation bar"</li>
+                                        <li><i class="bi bi-arrow-right text-primary me-2"></i>"Fix the error in my code"</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Messages will be displayed here -->
+            </div>
+            
+            <!-- Typing indicator -->
+            <div id="typing-indicator" class="px-3 py-2" style="display: none;">
+                <div class="d-flex align-items-center text-muted">
+                    <div class="avatar-sm bg-primary rounded-circle d-flex align-items-center justify-content-center me-2">
+                        <i class="bi bi-robot text-white small"></i>
+                    </div>
+                    <div class="typing-dots">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                    <small class="ms-2">AI is thinking...</small>
+                </div>
+            </div>
+            
+            <!-- Message input -->
+            <div class="border-top bg-white p-3">
+                <form id="chat-form" class="d-flex gap-2">
+                    <div class="flex-grow-1">
+                        <div class="input-group">
+                            <textarea 
+                                id="message-input" 
+                                class="form-control" 
+                                placeholder="Ask me about Flutter development..." 
+                                rows="1"
+                                style="resize: none; min-height: 38px; max-height: 120px;"
+                            ></textarea>
+                            <button 
+                                type="submit" 
+                                class="btn btn-primary" 
+                                id="send-button"
+                                disabled
+                            >
+                                <i class="bi bi-send"></i>
+                            </button>
+                        </div>
+                        <small class="text-muted">Press Enter to send, Shift+Enter for new line</small>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Mobile conversation toggle -->
+<button class="btn btn-primary d-md-none position-fixed" style="bottom: 100px; right: 20px; z-index: 1000;" data-bs-toggle="offcanvas" data-bs-target="#mobile-conversations">
+    <i class="bi bi-chat-dots"></i>
+</button>
+
+<!-- Mobile conversations offcanvas -->
+<div class="offcanvas offcanvas-start d-md-none" tabindex="-1" id="mobile-conversations">
+    <div class="offcanvas-header">
+        <h5>Conversations</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+    </div>
+    <div class="offcanvas-body">
+        <div id="mobile-conversations-list">
+            <!-- Same content as desktop sidebar -->
+        </div>
+    </div>
+</div>
+
+<style>
+/* Chat-specific styles */
+.avatar-sm {
+    width: 32px;
+    height: 32px;
+}
+
+.message-bubble {
+    max-width: 80%;
+    word-wrap: break-word;
+}
+
+.message-bubble.user {
+    background: #007bff;
+    color: white;
+    margin-left: auto;
+    border-radius: 18px 18px 4px 18px;
+}
+
+.message-bubble.assistant {
+    background: white;
+    color: #333;
+    margin-right: auto;
+    border-radius: 18px 18px 18px 4px;
+    border: 1px solid #e9ecef;
+}
+
+.message-time {
+    font-size: 0.75rem;
+    opacity: 0.7;
+}
+
+.conversation-item {
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.conversation-item:hover {
+    background-color: #e9ecef;
+}
+
+.conversation-item.active {
+    background-color: #007bff;
+    color: white;
+}
+
+.conversation-item.active .text-muted {
+    color: rgba(255, 255, 255, 0.7) !important;
+}
+
+/* Typing animation */
+.typing-dots {
+    display: flex;
+    gap: 2px;
+}
+
+.typing-dots span {
+    width: 6px;
+    height: 6px;
+    background: #6c757d;
+    border-radius: 50%;
+    animation: typing 1.4s infinite ease-in-out;
+}
+
+.typing-dots span:nth-child(1) { animation-delay: -0.32s; }
+.typing-dots span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes typing {
+    0%, 80%, 100% {
+        transform: scale(0.8);
+        opacity: 0.5;
+    }
+    40% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* Auto-expanding textarea */
+#message-input {
+    transition: height 0.2s ease;
+}
+
+/* Code highlighting in messages */
+.message-content pre {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    padding: 12px;
+    margin: 8px 0;
+    overflow-x: auto;
+    font-size: 0.875rem;
+}
+
+.message-content code {
+    background: #f8f9fa;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: 0.875rem;
+}
+
+.message-content pre code {
+    background: none;
+    padding: 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .message-bubble {
+        max-width: 90%;
+    }
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+{% endblock %}

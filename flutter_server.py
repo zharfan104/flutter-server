@@ -3,7 +3,9 @@ import subprocess
 import threading
 import time
 import json
-from flask import Flask, request, jsonify, Response, send_from_directory
+import asyncio
+from dataclasses import asdict
+from flask import Flask, request, jsonify, Response, send_from_directory, render_template
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -68,14 +70,41 @@ class FlutterManager:
         
         self.setup_project()
         
+        # Build Flutter web app first
+        print("Building Flutter web app...")
+        try:
+            build_result = subprocess.run(
+                ["flutter", "build", "web"],
+                cwd=self.project_path,
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            if build_result.returncode != 0:
+                return {"error": f"Flutter build failed: {build_result.stderr}"}
+            print("✓ Flutter web build completed")
+        except subprocess.TimeoutExpired:
+            return {"error": "Flutter build timed out"}
+        except Exception as e:
+            return {"error": f"Flutter build error: {str(e)}"}
+        
+        # Start a simple HTTP server to serve the built web app
+        import http.server
+        import socketserver
+        import os
+        
+        web_dir = os.path.join(self.project_path, "build", "web")
+        if not os.path.exists(web_dir):
+            return {"error": "Flutter web build directory not found"}
+        
+        # Create a simple HTTP server in a separate process
         cmd = [
-            "flutter", "run", "-d", "web-server",
-            "--web-port=8080",
-            "--web-hostname=0.0.0.0",  # Listen on all interfaces so nginx can proxy
-            "--dart-define=FLUTTER_WEB_USE_SKIA=true",
+            "python3", "-m", "http.server", "8080",
+            "--bind", "0.0.0.0",
+            "--directory", web_dir
         ]
         
-        print(f"Starting Flutter with command: {' '.join(cmd)}")
+        print(f"Starting Flutter web server: {' '.join(cmd)}")
         
         self.flutter_process = subprocess.Popen(
             cmd,
@@ -88,6 +117,7 @@ class FlutterManager:
         )
         
         self.is_running = True
+        self.ready = True  # Static server is ready immediately
         
         # Start output reader thread
         threading.Thread(target=self._read_output, daemon=True).start()
@@ -121,28 +151,40 @@ class FlutterManager:
     
     
     def hot_reload(self):
-        """Trigger hot reload"""
+        """Trigger hot reload (rebuild for static web)"""
         if not self.flutter_process or not self.is_running:
             return {"error": "Flutter not running"}
         
         try:
-            print("Sending hot reload command...")
-            self.flutter_process.stdin.write('r\n')
-            self.flutter_process.stdin.flush()
+            print("Rebuilding Flutter web app...")
             
-            time.sleep(0.5)
+            # Build Flutter web app
+            build_result = subprocess.run(
+                ["flutter", "build", "web"],
+                cwd=self.project_path,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
             
-            recent_output = self.output_buffer[-20:]
-            reload_success = any("Reloaded" in line for line in recent_output)
+            if build_result.returncode == 0:
+                print("✓ Flutter web rebuild completed")
+                return {
+                    "status": "rebuilt",
+                    "success": True,
+                    "message": "Flutter web app rebuilt successfully"
+                }
+            else:
+                return {
+                    "status": "rebuild_failed", 
+                    "success": False,
+                    "error": build_result.stderr
+                }
             
-            return {
-                "status": "reload_triggered",
-                "success": reload_success,
-                "recent_output": recent_output[-5:]
-            }
-            
+        except subprocess.TimeoutExpired:
+            return {"error": "Flutter rebuild timed out"}
         except Exception as e:
-            return {"error": f"Failed to hot reload: {str(e)}"}
+            return {"error": f"Failed to rebuild: {str(e)}"}
     
     
     def update_file(self, file_path, content):
@@ -173,6 +215,9 @@ class FlutterManager:
 
 # Initialize Flutter manager
 flutter_manager = FlutterManager()
+
+# Initialize chat manager
+from chat.chat_manager import chat_manager
 
 # API Routes - all prefixed with /api
 @app.route('/api/health', methods=['GET'])
@@ -294,6 +339,408 @@ def save_file(file_path):
         return jsonify(result)
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
+
+# Code modification endpoints
+@app.route('/api/modify-code', methods=['POST'])
+def modify_code():
+    """Generate and apply code modifications using LLM"""
+    try:
+        from code_modification.code_modifier import CodeModificationService, ModificationRequest
+        from utils.status_tracker import status_tracker
+        import uuid
+        
+        data = request.json
+        description = data.get('description', '')
+        target_files = data.get('target_files')
+        user_id = data.get('user_id', 'anonymous')
+        
+        if not description:
+            return jsonify({"error": "Description is required"}), 400
+        
+        # Create modification request
+        request_id = str(uuid.uuid4())
+        modification_request = ModificationRequest(
+            description=description,
+            target_files=target_files,
+            user_id=user_id,
+            request_id=request_id
+        )
+        
+        # Create status tracking
+        status_tracker.create_task(request_id, total_steps=4, metadata={
+            "type": "code_modification",
+            "description": description,
+            "user_id": user_id
+        })
+        
+        # Initialize code modification service
+        code_modifier = CodeModificationService(flutter_manager.project_path)
+        
+        # Execute modification in background thread
+        import threading
+        
+        def execute_modification():
+            try:
+                status_tracker.start_task(request_id, "Analyzing project structure...")
+                status_tracker.update_progress(request_id, 25, "Determining target files...")
+                
+                # Execute the modification
+                import asyncio
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                result = loop.run_until_complete(code_modifier.modify_code(modification_request))
+                
+                if result.success:
+                    status_tracker.update_progress(request_id, 75, "Applying modifications...")
+                    
+                    # Trigger hot reload if Flutter is running
+                    if flutter_manager.is_running and result.modified_files:
+                        reload_result = flutter_manager.hot_reload()
+                        result.metadata = {"hot_reload": reload_result}
+                    
+                    status_tracker.complete_task(request_id, asdict(result))
+                else:
+                    status_tracker.fail_task(request_id, f"Modification failed: {', '.join(result.errors)}")
+                    
+            except Exception as e:
+                status_tracker.fail_task(request_id, str(e))
+        
+        thread = threading.Thread(target=execute_modification, daemon=True)
+        thread.start()
+        
+        return jsonify({
+            "status": "started",
+            "request_id": request_id,
+            "message": "Code modification started"
+        })
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to start code modification: {str(e)}"}), 500
+
+@app.route('/api/modify-status/<request_id>', methods=['GET'])
+def get_modification_status(request_id):
+    """Get status of code modification request"""
+    try:
+        from utils.status_tracker import status_tracker
+        
+        task_summary = status_tracker.get_task_summary(request_id)
+        if not task_summary:
+            return jsonify({"error": "Request not found"}), 404
+        
+        return jsonify(task_summary)
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/analyze-project', methods=['POST'])
+def analyze_project_structure():
+    """Analyze Flutter project structure"""
+    try:
+        from code_modification.project_analyzer import FlutterProjectAnalyzer
+        
+        analyzer = FlutterProjectAnalyzer(flutter_manager.project_path)
+        project_summary = analyzer.generate_project_summary()
+        
+        return jsonify({
+            "status": "success",
+            "analysis": project_summary
+        })
+        
+    except Exception as e:
+        return jsonify({"error": f"Analysis failed: {str(e)}"}), 500
+
+@app.route('/api/suggest-files', methods=['POST'])
+def suggest_modification_files():
+    """Suggest files for modification based on description"""
+    try:
+        from code_modification.project_analyzer import FlutterProjectAnalyzer
+        
+        data = request.json
+        description = data.get('description', '')
+        
+        if not description:
+            return jsonify({"error": "Description is required"}), 400
+        
+        analyzer = FlutterProjectAnalyzer(flutter_manager.project_path)
+        suggested_files = analyzer.suggest_files_for_modification(description)
+        
+        return jsonify({
+            "status": "success",
+            "suggested_files": suggested_files
+        })
+        
+    except Exception as e:
+        return jsonify({"error": f"Suggestion failed: {str(e)}"}), 500
+
+@app.route('/api/modification-history', methods=['GET'])
+def get_modification_history():
+    """Get history of code modifications"""
+    try:
+        from utils.status_tracker import status_tracker
+        
+        # Get all modification tasks
+        all_tasks = status_tracker.get_all_tasks()
+        modification_tasks = {
+            task_id: status_tracker.get_task_summary(task_id)
+            for task_id, task in all_tasks.items()
+            if task.metadata and task.metadata.get("type") == "code_modification"
+        }
+        
+        return jsonify({
+            "status": "success",
+            "history": modification_tasks,
+            "statistics": status_tracker.get_statistics()
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Chat API endpoints
+@app.route('/api/chat/send', methods=['POST'])
+def chat_send_message():
+    """Send a message to AI chat and get response"""
+    try:
+        data = request.json
+        message = data.get('message', '').strip()
+        conversation_id = data.get('conversation_id')
+        
+        if not message:
+            return jsonify({"error": "Message cannot be empty"}), 400
+        
+        # Get or create conversation
+        if not conversation_id:
+            conversation_id = chat_manager.get_or_create_default_conversation()
+        elif not chat_manager.get_conversation(conversation_id):
+            return jsonify({"error": "Conversation not found"}), 404
+        
+        # Add user message
+        user_message = chat_manager.add_message(conversation_id, 'user', message)
+        
+        # Generate AI response in background thread
+        def generate_ai_response():
+            try:
+                from code_modification.llm_executor import SimpleLLMExecutor
+                from code_modification.project_analyzer import FlutterProjectAnalyzer
+                from code_modification.code_modifier import CodeModificationService, ModificationRequest
+                import uuid
+                
+                # Initialize services
+                llm_executor = SimpleLLMExecutor()
+                if not llm_executor.is_available():
+                    ai_response = "I'm sorry, but I'm not properly configured with API keys. Please set up ANTHROPIC_API_KEY or OPENAI_API_KEY environment variables to enable AI chat functionality."
+                    chat_manager.add_message(conversation_id, 'assistant', ai_response)
+                    return
+                
+                # Get project context
+                project_analyzer = FlutterProjectAnalyzer(flutter_manager.project_path)
+                try:
+                    project_summary = project_analyzer.generate_project_summary()
+                    project_context = json.dumps(project_summary, indent=2)
+                except Exception as e:
+                    project_context = f"Error analyzing project: {str(e)}"
+                
+                # Get recent conversation history
+                recent_messages = chat_manager.get_messages(conversation_id, limit=10)
+                conversation_history = ""
+                for msg in recent_messages[:-1]:  # Exclude the current message
+                    conversation_history += f"{msg.role.title()}: {msg.content}\n\n"
+                
+                # Create system prompt for Flutter development assistance
+                system_prompt = f"""You are an expert Flutter development assistant. You help developers with their Flutter projects through conversational interface.
+
+Project Context:
+{project_context}
+
+Recent Conversation:
+{conversation_history}
+
+Your capabilities:
+1. Answer Flutter development questions
+2. Provide code suggestions and examples
+3. Help debug issues
+4. Recommend best practices and packages
+5. Analyze project structure
+6. Suggest improvements
+
+When the user asks for code changes or modifications:
+1. Acknowledge the request
+2. Explain what you're going to do
+3. Use the existing code modification system to make changes
+4. Confirm the changes were applied
+
+Be helpful, concise, and practical. Always consider the current project context when providing advice."""
+
+                # Determine if this requires code modification
+                modification_keywords = ['add', 'create', 'modify', 'change', 'update', 'fix', 'implement', 'build', 'make']
+                needs_modification = any(keyword in message.lower() for keyword in modification_keywords)
+                
+                if needs_modification and "don't" not in message.lower() and "how to" not in message.lower():
+                    # This looks like a code modification request
+                    try:
+                        # Use code modification service
+                        code_modifier = CodeModificationService(flutter_manager.project_path)
+                        request_id = str(uuid.uuid4())
+                        
+                        modification_request = ModificationRequest(
+                            description=message,
+                            user_id='chat_user',
+                            request_id=request_id
+                        )
+                        
+                        # Execute modification
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        result = loop.run_until_complete(code_modifier.modify_code(modification_request))
+                        
+                        if result.success:
+                            ai_response = f"I've successfully made the requested changes to your Flutter project!\n\n"
+                            ai_response += f"**Changes Summary:** {result.changes_summary}\n\n"
+                            ai_response += f"**Modified Files:** {', '.join(result.modified_files)}\n\n"
+                            
+                            # Trigger hot reload if Flutter is running
+                            if flutter_manager.is_running and result.modified_files:
+                                reload_result = flutter_manager.hot_reload()
+                                if reload_result.get('success'):
+                                    ai_response += "✅ Hot reload triggered successfully! You should see the changes in your app now."
+                                else:
+                                    ai_response += "⚠️ Hot reload was attempted but may not have worked. You might need to restart your Flutter app."
+                            else:
+                                ai_response += "ℹ️ Please start your Flutter development server to see the changes."
+                        else:
+                            ai_response = f"I encountered some issues while trying to make the changes:\n\n"
+                            ai_response += f"**Errors:** {', '.join(result.errors)}\n\n"
+                            ai_response += "Let me provide some guidance instead:\n\n"
+                            
+                            # Fall back to providing advice
+                            messages = [{"role": "user", "content": f"The user asked: {message}\n\nProvide helpful guidance about how to implement this in Flutter."}]
+                            response = llm_executor.execute(messages=messages, system_prompt=system_prompt)
+                            ai_response += response.text
+                    
+                    except Exception as e:
+                        print(f"Error in code modification: {e}")
+                        ai_response = f"I had trouble modifying the code directly, but I can still help you with guidance!\n\n"
+                        
+                        # Fall back to providing advice
+                        messages = [{"role": "user", "content": message}]
+                        response = llm_executor.execute(messages=messages, system_prompt=system_prompt)
+                        ai_response += response.text
+                
+                else:
+                    # Regular conversation - provide advice and guidance
+                    messages = [{"role": "user", "content": message}]
+                    response = llm_executor.execute(messages=messages, system_prompt=system_prompt)
+                    ai_response = response.text
+                
+                # Add AI response to conversation
+                chat_manager.add_message(conversation_id, 'assistant', ai_response)
+                
+            except Exception as e:
+                print(f"Error generating AI response: {e}")
+                error_response = f"I'm sorry, I encountered an error while processing your request: {str(e)}"
+                chat_manager.add_message(conversation_id, 'assistant', error_response)
+        
+        # Start AI response generation in background
+        thread = threading.Thread(target=generate_ai_response, daemon=True)
+        thread.start()
+        
+        return jsonify({
+            "status": "success",
+            "message": "Message sent, AI is processing...",
+            "conversation_id": conversation_id,
+            "user_message": user_message.to_dict()
+        })
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to send message: {str(e)}"}), 500
+
+@app.route('/api/chat/history', methods=['GET'])
+def chat_get_history():
+    """Get conversation history"""
+    try:
+        conversation_id = request.args.get('conversation_id')
+        limit = request.args.get('limit', type=int)
+        
+        if not conversation_id:
+            conversation_id = chat_manager.get_or_create_default_conversation()
+        
+        messages = chat_manager.get_messages(conversation_id, limit=limit)
+        
+        return jsonify({
+            "status": "success",
+            "conversation_id": conversation_id,
+            "messages": [msg.to_dict() for msg in messages]
+        })
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to get history: {str(e)}"}), 500
+
+@app.route('/api/chat/new', methods=['POST'])
+def chat_new_conversation():
+    """Create a new conversation"""
+    try:
+        data = request.json or {}
+        title = data.get('title', 'New Conversation')
+        
+        conversation_id = chat_manager.create_conversation(title)
+        
+        return jsonify({
+            "status": "success",
+            "conversation_id": conversation_id,
+            "message": "New conversation created"
+        })
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to create conversation: {str(e)}"}), 500
+
+@app.route('/api/chat/conversations', methods=['GET'])
+def chat_list_conversations():
+    """Get list of all conversations"""
+    try:
+        conversations = chat_manager.get_conversation_list()
+        stats = chat_manager.get_stats()
+        
+        return jsonify({
+            "status": "success",
+            "conversations": conversations,
+            "stats": stats
+        })
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to list conversations: {str(e)}"}), 500
+
+@app.route('/api/chat/conversation/<conversation_id>', methods=['DELETE'])
+def chat_delete_conversation(conversation_id):
+    """Delete a conversation"""
+    try:
+        success = chat_manager.delete_conversation(conversation_id)
+        
+        if success:
+            return jsonify({
+                "status": "success",
+                "message": "Conversation deleted"
+            })
+        else:
+            return jsonify({"error": "Conversation not found"}), 404
+            
+    except Exception as e:
+        return jsonify({"error": f"Failed to delete conversation: {str(e)}"}), 500
+
+@app.route('/api/chat/conversation/<conversation_id>/clear', methods=['POST'])
+def chat_clear_conversation(conversation_id):
+    """Clear all messages from a conversation"""
+    try:
+        success = chat_manager.clear_conversation(conversation_id)
+        
+        if success:
+            return jsonify({
+                "status": "success",
+                "message": "Conversation cleared"
+            })
+        else:
+            return jsonify({"error": "Conversation not found"}), 404
+            
+    except Exception as e:
+        return jsonify({"error": f"Failed to clear conversation: {str(e)}"}), 500
 
 @app.route('/api/demo/update-counter', methods=['POST'])
 def demo_update_counter():
@@ -491,433 +938,56 @@ def flutter_app(path=''):
 # Landing page with instructions and embedded app
 @app.route('/')
 def index():
-    return '''
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Flutter Hot Reload API</title>
-        <style>
-            body { 
-                font-family: Arial, sans-serif; 
-                margin: 0; 
-                padding: 20px;
-                background: #f5f5f5;
-            }
-            .container {
-                display: grid;
-                grid-template-columns: 1fr 1fr 1fr;
-                gap: 20px;
-                max-width: 1800px;
-                margin: 0 auto;
-            }
-            .panel {
-                background: white;
-                border-radius: 8px;
-                padding: 20px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
-            .app-panel {
-                display: flex;
-                flex-direction: column;
-                min-height: 600px;
-            }
-            .flutter-container {
-                flex: 1;
-                border: 2px solid #ddd;
-                border-radius: 8px;
-                overflow: hidden;
-                background: white;
-            }
-            iframe {
-                width: 100%;
-                height: 100%;
-                border: none;
-                min-height: 500px;
-            }
-            code { 
-                background: #f4f4f4; 
-                padding: 2px 6px; 
-                border-radius: 3px;
-            }
-            pre { 
-                background: #f4f4f4; 
-                padding: 15px; 
-                border-radius: 5px;
-                overflow-x: auto; 
-            }
-            .status { 
-                margin: 20px 0; 
-                padding: 15px; 
-                background: #e8f5e9; 
-                border-radius: 5px;
-                border-left: 4px solid #4caf50;
-            }
-            .controls {
-                margin: 20px 0;
-                padding: 15px;
-                background: #e3f2fd;
-                border-radius: 5px;
-                border-left: 4px solid #2196f3;
-            }
-            button {
-                background: #2196f3;
-                color: white;
-                border: none;
-                padding: 10px 20px;
-                border-radius: 5px;
-                cursor: pointer;
-                margin: 5px;
-                font-size: 14px;
-            }
-            button:hover {
-                background: #1976d2;
-            }
-            input[type="text"] {
-                padding: 8px;
-                border: 1px solid #ddd;
-                border-radius: 4px;
-                margin: 5px;
-                width: 200px;
-            }
-            .log {
-                background: #f8f8f8;
-                border: 1px solid #ddd;
-                border-radius: 4px;
-                padding: 10px;
-                max-height: 200px;
-                overflow-y: auto;
-                font-family: monospace;
-                font-size: 12px;
-                margin-top: 10px;
-            }
-            h1 {
-                text-align: center;
-                color: #333;
-                margin-bottom: 30px;
-                grid-column: 1 / -1;
-            }
-            .editor-panel {
-                display: flex;
-                flex-direction: column;
-                min-height: 600px;
-            }
-            .code-editor {
-                flex: 1;
-                font-family: 'Courier New', monospace;
-                font-size: 14px;
-                border: 1px solid #ddd;
-                border-radius: 4px;
-                padding: 10px;
-                resize: none;
-                background: #1e1e1e;
-                color: #d4d4d4;
-                line-height: 1.5;
-                min-height: 400px;
-            }
-            .editor-controls {
-                margin-bottom: 10px;
-            }
-            .file-tabs {
-                display: flex;
-                gap: 5px;
-                margin-bottom: 10px;
-            }
-            .file-tab {
-                padding: 8px 12px;
-                background: #e0e0e0;
-                border: none;
-                border-radius: 4px 4px 0 0;
-                cursor: pointer;
-                font-size: 12px;
-            }
-            .file-tab.active {
-                background: #1e1e1e;
-                color: white;
-            }
-            .editor-status {
-                font-size: 12px;
-                color: #666;
-                margin-top: 5px;
-            }
-            @media (max-width: 1200px) {
-                .container {
-                    grid-template-columns: 1fr 1fr;
-                }
-                .editor-panel {
-                    grid-column: 1 / -1;
-                    order: -1;
-                }
-            }
-            @media (max-width: 768px) {
-                .container {
-                    grid-template-columns: 1fr;
-                }
-            }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>Flutter Hot Reload API</h1>
-            
-            <div class="panel editor-panel">
-                <h2>📝 Code Editor</h2>
-                
-                <div class="file-tabs">
-                    <button class="file-tab active" onclick="switchFile('main.dart')">main.dart</button>
-                    <button class="file-tab" onclick="switchFile('pubspec.yaml')">pubspec.yaml</button>
-                </div>
-                
-                <div class="editor-controls">
-                    <button onclick="saveFile()">💾 Save & Hot Reload</button>
-                    <button onclick="loadFile()">🔄 Reload from Server</button>
-                    <span class="editor-status" id="editor-status">Ready</span>
-                </div>
-                
-                <textarea id="code-editor" class="code-editor" placeholder="Loading file..."></textarea>
-            </div>
-            
-            <div class="panel">
-                <h2>🚀 Controls</h2>
-                
-                <div class="status">
-                    <h3>Status: <span id="status">Checking...</span></h3>
-                    <div id="flutter-info"></div>
-                </div>
-                
-                <div class="controls">
-                    <h3>Quick Actions:</h3>
-                    <button onclick="startFlutter()">Start Flutter</button>
-                    <button onclick="checkStatus()">Check Status</button>
-                    <button onclick="hotReload()">Hot Reload</button>
-                    <button onclick="getLogs()">Get Flutter Logs</button>
-                    <button onclick="testFlutter()">Test Flutter Connection</button>
-                    <br>
-                    <input type="text" id="messageInput" placeholder="Enter custom message" value="Hello from Hot Reload!">
-                    <button onclick="updateCounter()">Update Counter</button>
-                </div>
-                
-                <h2>📡 API Endpoints:</h2>
-                <ul>
-                    <li><code>GET /api/health</code> - Check server health</li>
-                    <li><code>POST /api/start</code> - Start Flutter</li>
-                    <li><code>GET /api/status</code> - Get Flutter status</li>
-                    <li><code>POST /api/hot-reload</code> - Trigger hot reload</li>
-                    <li><code>PUT /api/files</code> - Update files</li>
-                    <li><code>POST /api/demo/update-counter</code> - Demo update</li>
-                </ul>
-                
-                <h2>🧪 Test Hot Reload (curl):</h2>
-                <pre>
-curl -X POST http://localhost:80/api/demo/update-counter \\
-  -H "Content-Type: application/json" \\
-  -d '{"message": "Hello from Hot Reload!"}'
-                </pre>
-                
-                <div id="logs" class="log"></div>
-            </div>
-            
-            <div class="panel app-panel">
-                <h2>📱 Flutter App</h2>
-                <div class="flutter-container">
-                    <iframe id="flutter-app" src="/app" title="Flutter App">
-                        <p>Flutter app will appear here once started. Click "Start Flutter" and wait 30-60 seconds.</p>
-                    </iframe>
-                </div>
-            </div>
-        </div>
-        
-        <script>
-            let logContainer = document.getElementById('logs');
-            let currentFile = 'lib/main.dart';
-            let editor = document.getElementById('code-editor');
-            let editorStatus = document.getElementById('editor-status');
-            
-            function log(message) {
-                logContainer.innerHTML += new Date().toLocaleTimeString() + ': ' + message + '\\n';
-                logContainer.scrollTop = logContainer.scrollHeight;
-            }
-            
-            function setEditorStatus(message) {
-                editorStatus.textContent = message;
-            }
-            
-            function switchFile(fileName) {
-                // Map display name to actual path
-                const fileMap = {
-                    'main.dart': 'lib/main.dart',
-                    'pubspec.yaml': 'pubspec.yaml'
-                };
-                
-                currentFile = fileMap[fileName] || fileName;
-                
-                // Update tab appearance
-                document.querySelectorAll('.file-tab').forEach(tab => {
-                    tab.classList.remove('active');
-                });
-                event.target.classList.add('active');
-                
-                loadFile();
-            }
-            
-            function loadFile() {
-                setEditorStatus('Loading...');
-                fetch('/api/file/' + currentFile)
-                    .then(r => r.json())
-                    .then(data => {
-                        if (data.status === 'success') {
-                            editor.value = data.content;
-                            setEditorStatus('Loaded ' + currentFile);
-                            log('Loaded file: ' + currentFile);
-                        } else {
-                            editor.value = '// File not found or error loading';
-                            setEditorStatus('Error: ' + data.error);
-                            log('Error loading file: ' + data.error);
-                        }
-                    })
-                    .catch(e => {
-                        setEditorStatus('Network error');
-                        log('Error loading file: ' + e);
-                    });
-            }
-            
-            function saveFile() {
-                setEditorStatus('Saving...');
-                fetch('/api/file/' + currentFile, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        content: editor.value,
-                        auto_reload: currentFile.endsWith('.dart')
-                    })
-                })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.status === 'file_updated') {
-                        setEditorStatus('Saved! ' + (data.reload ? 'Hot reloaded.' : ''));
-                        log('Saved file: ' + currentFile);
-                        if (data.reload) {
-                            log('Hot reload: ' + JSON.stringify(data.reload));
-                            // Refresh iframe to show changes
-                            setTimeout(() => {
-                                document.getElementById('flutter-app').src = '/app?' + Date.now();
-                            }, 1000);
-                        }
-                    } else {
-                        setEditorStatus('Save failed');
-                        log('Error saving file: ' + JSON.stringify(data));
-                    }
-                })
-                .catch(e => {
-                    setEditorStatus('Network error');
-                    log('Error saving file: ' + e);
-                });
-            }
-            
-            function startFlutter() {
-                log('Starting Flutter...');
-                fetch('/api/start', { method: 'POST' })
-                    .then(r => r.json())
-                    .then(data => {
-                        log('Flutter start response: ' + JSON.stringify(data));
-                        if (!data.error) {
-                            log('Flutter is starting, please wait 30-60 seconds for compilation...');
-                            // Refresh the iframe after a delay
-                            setTimeout(() => {
-                                document.getElementById('flutter-app').src = '/app?' + Date.now();
-                                checkStatus();
-                            }, 30000);
-                        }
-                    })
-                    .catch(e => log('Error: ' + e));
-            }
-            
-            function checkStatus() {
-                fetch('/api/status')
-                    .then(r => r.json())
-                    .then(data => {
-                        document.getElementById('status').textContent = 
-                            data.running ? (data.ready ? 'Running & Ready' : 'Starting...') : 'Stopped';
-                        document.getElementById('flutter-info').innerHTML = 
-                            'Running: ' + data.running + '<br>Ready: ' + data.ready + 
-                            (data.pid ? '<br>PID: ' + data.pid : '');
-                        log('Status: ' + JSON.stringify(data));
-                    })
-                    .catch(e => log('Error checking status: ' + e));
-            }
-            
-            function hotReload() {
-                log('Triggering hot reload...');
-                fetch('/api/hot-reload', { method: 'POST' })
-                    .then(r => r.json())
-                    .then(data => {
-                        log('Hot reload response: ' + JSON.stringify(data));
-                    })
-                    .catch(e => log('Error: ' + e));
-            }
-            
-            function updateCounter() {
-                const message = document.getElementById('messageInput').value;
-                log('Updating counter with message: ' + message);
-                fetch('/api/demo/update-counter', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: message })
-                })
-                .then(r => r.json())
-                .then(data => {
-                    log('Update response: ' + JSON.stringify(data));
-                    // Refresh iframe to show changes
-                    setTimeout(() => {
-                        document.getElementById('flutter-app').src = '/app?' + Date.now();
-                    }, 1000);
-                })
-                .catch(e => log('Error: ' + e));
-            }
-            
-            function getLogs() {
-                log('Fetching Flutter logs...');
-                fetch('/api/logs')
-                    .then(r => r.json())
-                    .then(data => {
-                        log('=== FLUTTER LOGS ===');
-                        data.logs.forEach(line => log('Flutter: ' + line));
-                        log('=== END LOGS ===');
-                        log('Process info: running=' + data.running + ', ready=' + data.ready + ', alive=' + data.process_alive);
-                    })
-                    .catch(e => log('Error fetching logs: ' + e));
-            }
-            
-            function testFlutter() {
-                log('Testing Flutter connection...');
-                fetch('/api/test-flutter')
-                    .then(r => r.json())
-                    .then(data => {
-                        log('Flutter test result: ' + JSON.stringify(data));
-                        if (data.flutter_reachable) {
-                            log('✅ Flutter is reachable! Status: ' + data.status_code);
-                        } else {
-                            log('❌ Flutter not reachable: ' + data.error);
-                        }
-                    })
-                    .catch(e => log('Error testing Flutter: ' + e));
-            }
-            
-            // Check status on page load
-            checkStatus();
-            
-            // Load initial file
-            loadFile();
-            
-            // Auto-refresh status every 10 seconds
-            setInterval(checkStatus, 10000);
-        </script>
-    </body>
-    </html>
-    '''
+    return render_template('index.html')
+
+# Code editor page
+@app.route('/editor')
+def editor():
+    return render_template('editor.html')
+
+# Project overview page
+@app.route('/project')
+def project_overview():
+    return render_template('project.html')
+
+# AI Chat page
+@app.route('/chat')
+def chat():
+    return render_template('chat.html')
 
 def main():
     print("Starting Flask server on port 5000...")
-    threading.Thread(target=lambda: flutter_manager.start_flutter(), daemon=True).start()
+    print("Auto-starting Flutter development server...")
+    print("Access the web interface at: http://localhost:5000")
+    
+    # Auto-start Flutter development server
+    try:
+        # Check if port 8080 is available
+        import socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        port_available = sock.connect_ex(('localhost', 8080)) != 0
+        sock.close()
+        
+        if not port_available:
+            print("Warning: Port 8080 is already in use. Attempting to free it...")
+            import subprocess
+            subprocess.run(["pkill", "-9", "-f", "dart"], stderr=subprocess.DEVNULL)
+            time.sleep(1)
+        
+        result = flutter_manager.start_flutter()
+        if result.get('error'):
+            print(f"Warning: Flutter auto-start failed: {result['error']}")
+            print("You can still start Flutter manually via the web interface or API")
+        else:
+            print(f"✓ Flutter development server starting (PID: {result.get('pid')})")
+            print("Waiting for Flutter to initialize...")
+            # Give Flutter a moment to start up
+            time.sleep(2)
+    except Exception as e:
+        print(f"Warning: Failed to auto-start Flutter: {str(e)}")
+        print("You can still start Flutter manually via the web interface or API")
+    
     app.run(host='0.0.0.0', port=5000, debug=True)
 
 if __name__ == '__main__':
