@@ -932,13 +932,17 @@ def chat_send_message():
         # Add user message
         user_message = chat_manager.add_message(conversation_id, 'user', message)
         
+        # Generate request ID for tracking
+        import uuid
+        request_id = str(uuid.uuid4())
+        
         # Generate AI response in background thread
         def generate_ai_response():
             try:
                 from code_modification.llm_executor import SimpleLLMExecutor
                 from code_modification.project_analyzer import FlutterProjectAnalyzer
                 from code_modification.code_modifier import CodeModificationService, ModificationRequest
-                import uuid
+                from utils.status_tracker import status_tracker
                 
                 # Initialize services
                 llm_executor = SimpleLLMExecutor()
@@ -995,6 +999,16 @@ Be helpful, concise, and practical. Always consider the current project context 
                     try:
                         from code_modification.build_pipeline import BuildPipelineService
                         
+                        # Create status tracking
+                        status_tracker.create_task(request_id, total_steps=6, metadata={
+                            "type": "ai_pipeline_chat",
+                            "description": message,
+                            "conversation_id": conversation_id,
+                            "user_id": "chat_user"
+                        })
+                        
+                        status_tracker.start_task(request_id, "Starting AI pipeline from chat...")
+                        
                         # Use the complete AI pipeline for code modifications
                         pipeline = BuildPipelineService(flutter_manager.project_path, flutter_manager)
                         
@@ -1003,7 +1017,7 @@ Be helpful, concise, and practical. Always consider the current project context 
                         asyncio.set_event_loop(loop)
                         pipeline_result = loop.run_until_complete(pipeline.execute_pipeline(
                             user_request=message,
-                            context={"source": "chat", "conversation_id": conversation_id}
+                            context={"source": "chat", "conversation_id": conversation_id, "request_id": request_id}
                         ))
                         
                         if pipeline_result.success:
@@ -1046,9 +1060,15 @@ Be helpful, concise, and practical. Always consider the current project context 
                                 ai_response += "\n\n🔄 Hot reload was automatically triggered - you should see your changes live!"
                             else:
                                 ai_response += "\n\nℹ️ Start your Flutter development server to see the changes."
+                            
+                            # Update status tracking as successful
+                            status_tracker.complete_task(request_id, summary)
                         else:
                             ai_response = f"❌ I encountered issues while implementing your request:\n\n"
                             ai_response += f"**Error:** {pipeline_result.error_message or 'Pipeline execution failed'}\n\n"
+                            
+                            # Update status tracking as failed
+                            status_tracker.fail_task(request_id, pipeline_result.error_message or 'Pipeline execution failed')
                             
                             # Provide fallback guidance
                             ai_response += "Let me provide some guidance instead:\n\n"
@@ -1058,6 +1078,9 @@ Be helpful, concise, and practical. Always consider the current project context 
                     
                     except Exception as e:
                         print(f"Error in code modification: {e}")
+                        # Update status tracking as failed
+                        status_tracker.fail_task(request_id, str(e))
+                        
                         ai_response = f"I had trouble modifying the code directly, but I can still help you with guidance!\n\n"
                         
                         # Fall back to providing advice
@@ -1087,6 +1110,7 @@ Be helpful, concise, and practical. Always consider the current project context 
             "status": "success",
             "message": "Message sent, AI is processing...",
             "conversation_id": conversation_id,
+            "request_id": request_id,
             "user_message": user_message.to_dict()
         })
         
@@ -1181,6 +1205,21 @@ def chat_clear_conversation(conversation_id):
             
     except Exception as e:
         return jsonify({"error": f"Failed to clear conversation: {str(e)}"}), 500
+
+@app.route('/api/chat/status/<request_id>', methods=['GET'])
+def chat_get_request_status(request_id):
+    """Get status of a chat request (AI pipeline)"""
+    try:
+        from utils.status_tracker import status_tracker
+        
+        task_summary = status_tracker.get_task_summary(request_id)
+        if not task_summary:
+            return jsonify({"error": "Request not found"}), 404
+        
+        return jsonify(task_summary)
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/demo/update-counter', methods=['POST'])
 def demo_update_counter():

@@ -180,13 +180,14 @@ class FlutterDevServer {
                 this.showToast(`Error: ${data.error}`, 'danger');
             } else {
                 this.reloadCount++;
-                this.showToast('Hot reload completed', 'success');
+                this.showToast('Hot reload completed - refreshing Flutter app', 'success');
                 this.log('Hot reload response: ' + JSON.stringify(data));
                 
-                // Refresh app preview
+                // Refresh app preview immediately after successful hot reload
                 setTimeout(() => {
                     this.refreshApp();
-                }, 1000);
+                    this.showToast('Flutter app preview refreshed', 'info');
+                }, 500);
             }
         } catch (error) {
             this.showToast('Failed to hot reload', 'danger');
@@ -611,6 +612,11 @@ class FlutterDevServer {
 // Initialize the app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.flutterDevServer = new FlutterDevServer();
+    
+    // Initialize monitoring systems
+    initializeAdvancedLogging();
+    initializePerformanceMonitoring();
+    monitorChatRequests();
 });
 
 // Cleanup on page unload
@@ -876,7 +882,7 @@ async function updatePipelineStatus(requestId) {
     
     try {
         // Get pipeline status
-        const statusResponse = await fetch(`/api/chat/status/${requestId}`);
+        const statusResponse = await fetch(`/api/pipeline-status/${requestId}`);
         const statusData = await statusResponse.json();
         
         if (statusData.status) {
@@ -937,7 +943,7 @@ function monitorChatRequests() {
         const [url, options] = args;
         
         // Track chat modification requests and code modification requests
-        if ((url.includes('/api/chat/send') || url.includes('/api/modify-code')) && options?.method === 'POST') {
+        if ((url.includes('/api/chat/send') || url.includes('/api/modify-code') || url.includes('/api/ai-pipeline')) && options?.method === 'POST') {
             try {
                 const response = await originalFetch.apply(this, arguments);
                 const clonedResponse = response.clone();
@@ -991,7 +997,7 @@ function monitorPipelineProgress(requestId) {
             await updatePipelineStatus(requestId);
             
             // Check if pipeline is complete
-            const response = await fetch(`/api/chat/status/${requestId}`);
+            const response = await fetch(`/api/pipeline-status/${requestId}`);
             
             if (!response.ok) {
                 if (window.flutterDevServer) {

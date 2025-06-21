@@ -345,6 +345,12 @@ class ChatManager {
                 this.currentConversationId = data.conversation_id;
                 // Update to AI processing state
                 this.updateProcessingIndicator('AI is processing your request...');
+                
+                // If request_id is provided, start monitoring the pipeline
+                if (data.request_id) {
+                    this.startPipelineMonitoring(data.request_id);
+                }
+                
                 // AI response will be added via polling
             } else {
                 throw new Error(data.error || 'Failed to send message');
@@ -525,6 +531,20 @@ class ChatManager {
                 console.log('Hot reload API call failed (this is normal):', error);
             });
         }, 500);
+    }
+
+    startPipelineMonitoring(requestId) {
+        console.log('Starting pipeline monitoring for request:', requestId);
+        
+        // Notify the global monitoring system if available
+        if (window.flutterDevServer && window.flutterDevServer.updatePipelineProgress) {
+            window.flutterDevServer.updatePipelineProgress('AI processing chat request...', 10, 'running');
+            
+            // Start monitoring this pipeline
+            if (window.monitorPipelineProgress) {
+                window.monitorPipelineProgress(requestId);
+            }
+        }
     }
 
     showToast(message, type = 'info') {
