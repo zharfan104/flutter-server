@@ -151,9 +151,17 @@ Important guidelines:
         """
         start_time = time.time()
         
-        # Simple logging
+        # Enhanced logging
         if MONITORING_AVAILABLE:
-            logger.info(LogCategory.CODE_MOD, f"Starting code modification: {request.description[:100]}...")
+            logger.info(LogCategory.CODE_MOD, f"Starting code modification: {request.description[:100]}...", 
+                       context={
+                           "request_id": request.request_id,
+                           "user_id": request.user_id,
+                           "description": request.description,
+                           "target_files": request.target_files,
+                           "files_to_create": request.files_to_create,
+                           "files_to_delete": request.files_to_delete
+                       })
         
         print(f"Processing modification request: {request.description}")
         
@@ -186,6 +194,10 @@ Important guidelines:
             
             print(f"Target files for modification: {target_files}")
             
+            if MONITORING_AVAILABLE:
+                logger.info(LogCategory.CODE_MOD, f"Identified {len(target_files)} files for modification", 
+                           context={"target_files": target_files, "request_id": request.request_id})
+            
             # Get current file contents
             all_files = target_files + (request.files_to_create or [])
             current_contents = self._get_file_contents(all_files)
@@ -198,9 +210,18 @@ Important guidelines:
             # Apply modifications
             result = await self._apply_modifications(modifications, deletions, request.request_id)
             
-            # Simple success logging
+            # Enhanced success logging
+            duration = time.time() - start_time
             if MONITORING_AVAILABLE:
-                logger.info(LogCategory.CODE_MOD, f"Code modification completed: {result.changes_summary}")
+                logger.info(LogCategory.CODE_MOD, f"Code modification completed: {result.changes_summary}", 
+                           context={
+                               "request_id": request.request_id,
+                               "duration_seconds": round(duration, 2),
+                               "modified_files": result.modified_files,
+                               "created_files": result.created_files,
+                               "deleted_files": result.deleted_files,
+                               "changes_summary": result.changes_summary
+                           })
             
             print(f"✅ Code modification completed: {result.changes_summary}")
             return result
@@ -210,8 +231,15 @@ Important guidelines:
             
             print(f"Error during code modification: {error_message}")
             
+            duration = time.time() - start_time
             if MONITORING_AVAILABLE:
-                logger.error(LogCategory.CODE_MOD, f"Code modification failed: {error_message}")
+                logger.error(LogCategory.CODE_MOD, f"Code modification failed: {error_message}",
+                           context={
+                               "request_id": request.request_id,
+                               "duration_seconds": round(duration, 2),
+                               "error_message": error_message,
+                               "description": request.description[:100]
+                           })
             
             return ModificationResult(
                 success=False,
@@ -463,6 +491,10 @@ Important guidelines:
                     file_path.unlink()
                     deleted_files.append(file_to_delete)
                     print(f"Deleted file: {file_to_delete}")
+                    
+                    if MONITORING_AVAILABLE:
+                        logger.info(LogCategory.FILE_OP, f"Deleted file: {file_to_delete}",
+                                   context={"operation": "delete", "file_path": file_to_delete, "request_id": request_id})
                 else:
                     warnings.append(f"File to delete not found: {file_to_delete}")
             
@@ -488,9 +520,17 @@ Important guidelines:
                 if is_new_file:
                     created_files.append(modification.file_path)
                     print(f"Created file: {modification.file_path}")
+                    
+                    if MONITORING_AVAILABLE:
+                        logger.info(LogCategory.FILE_OP, f"Created file: {modification.file_path}",
+                                   context={"operation": "create", "file_path": modification.file_path, "request_id": request_id})
                 else:
                     modified_files.append(modification.file_path)
                     print(f"Modified file: {modification.file_path}")
+                    
+                    if MONITORING_AVAILABLE:
+                        logger.info(LogCategory.FILE_OP, f"Modified file: {modification.file_path}",
+                                   context={"operation": "modify", "file_path": modification.file_path, "request_id": request_id})
             
             # Validate the modifications (basic syntax check)
             validation_errors = self._validate_modifications(modifications)

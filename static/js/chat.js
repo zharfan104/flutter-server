@@ -375,10 +375,6 @@ class ChatManager {
                 // Update to AI processing state
                 this.updateProcessingIndicator('AI is processing your request...');
                 
-                // If request_id is provided, start monitoring the pipeline
-                if (data.request_id) {
-                    this.startPipelineMonitoring(data.request_id);
-                }
                 
                 // AI response will be added via polling
                 // Reset sending flag after successful send
@@ -590,19 +586,6 @@ class ChatManager {
         }, 500);
     }
 
-    startPipelineMonitoring(requestId) {
-        console.log('Starting pipeline monitoring for request:', requestId);
-        
-        // Notify the global monitoring system if available
-        if (window.flutterDevServer && window.flutterDevServer.updatePipelineProgress) {
-            window.flutterDevServer.updatePipelineProgress('AI processing chat request...', 10, 'running');
-            
-            // Start monitoring this pipeline
-            if (window.monitorPipelineProgress) {
-                window.monitorPipelineProgress(requestId);
-            }
-        }
-    }
 
     showToast(message, type = 'info') {
         // Use the global toast function if available

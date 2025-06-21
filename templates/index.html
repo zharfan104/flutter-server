@@ -255,12 +255,7 @@
                 <!-- Monitoring Tabs -->
                 <ul class="nav nav-tabs" id="monitoring-tabs" role="tablist" style="background: #f8f9fa; border-bottom: 1px solid #dee2e6; padding: 0 12px;">
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link active fw-medium" id="pipeline-tab" data-bs-toggle="tab" data-bs-target="#pipeline" type="button" role="tab" style="color: #495057; border: none; background: transparent; padding: 8px 16px;">
-                            <i class="bi bi-diagram-3 text-primary"></i> Pipeline
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link fw-medium" id="logs-tab" data-bs-toggle="tab" data-bs-target="#logs-panel" type="button" role="tab" style="color: #495057; border: none; background: transparent; padding: 8px 16px;">
+                        <button class="nav-link active fw-medium" id="logs-tab" data-bs-toggle="tab" data-bs-target="#logs-panel" type="button" role="tab" style="color: #495057; border: none; background: transparent; padding: 8px 16px;">
                             <i class="bi bi-journal-text text-info"></i> Logs
                         </button>
                     </li>
@@ -278,39 +273,6 @@
 
                 <!-- Tab Content -->
                 <div class="tab-content" id="monitoring-tab-content">
-                    <!-- AI Pipeline Tab -->
-                    <div class="tab-pane fade show active" id="pipeline" role="tabpanel" style="height: 200px; background: #ffffff;">
-                        <div class="p-2">
-                            <!-- Pipeline Status Header -->
-                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                <div class="d-flex align-items-center">
-                                    <div id="pipeline-status-indicator" class="status-indicator bg-secondary me-2"></div>
-                                    <span id="pipeline-status-text" class="fw-medium text-dark small">No active pipeline</span>
-                                </div>
-                                <small class="text-secondary" id="pipeline-timing"></small>
-                            </div>
-                            
-                            <!-- Pipeline Progress -->
-                            <div class="mb-2">
-                                <div class="progress" style="height: 6px; background-color: #e9ecef;">
-                                    <div id="pipeline-progress" class="progress-bar bg-primary" role="progressbar" style="width: 0%"></div>
-                                </div>
-                                <div class="d-flex justify-content-between mt-1">
-                                    <small class="text-dark" id="pipeline-step">Waiting for request...</small>
-                                    <small class="text-primary fw-bold" id="pipeline-percent">0%</small>
-                                </div>
-                            </div>
-                            
-                            <!-- Pipeline Steps -->
-                            <div id="pipeline-steps" class="pipeline-steps border rounded" style="height: 140px; overflow-y: auto; background: #f8f9fa; padding: 8px; font-size: 0.8rem;">
-                                <div class="text-center py-3">
-                                    <i class="bi bi-play-circle fs-1 text-primary"></i>
-                                    <p class="mt-1 text-dark mb-0 small">Pipeline steps will appear here when active</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
                     <!-- System Logs Tab -->
                     <div class="tab-pane fade" id="logs-panel" role="tabpanel" style="height: 200px; background: #ffffff;">
                         <div class="p-2">

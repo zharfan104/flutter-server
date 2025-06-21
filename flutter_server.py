@@ -595,165 +595,8 @@ def get_project_structure():
             "error_id": error_instance.error_id
         }), 500
 
-@app.route('/api/ai-pipeline', methods=['POST'])
-def ai_pipeline():
-    """Execute the complete AI-driven development pipeline"""
-    try:
-        from code_modification.build_pipeline import BuildPipelineService
-        from utils.status_tracker import status_tracker
-        import uuid
-        
-        data = request.json
-        user_request = data.get('description', '')
-        context = data.get('context', {})
-        user_id = data.get('user_id', 'anonymous')
-        
-        if not user_request:
-            return jsonify({"error": "Description is required"}), 400
-        
-        # Create pipeline request
-        request_id = str(uuid.uuid4())
-        
-        # Create status tracking
-        status_tracker.create_task(request_id, total_steps=6, metadata={
-            "type": "ai_pipeline",
-            "description": user_request,
-            "user_id": user_id
-        })
-        
-        # Initialize pipeline service
-        pipeline = BuildPipelineService(flutter_manager.project_path, flutter_manager)
-        
-        # Set up status callback
-        def status_callback(message):
-            try:
-                status_tracker.update_status(request_id, message)
-            except Exception as e:
-                print(f"Status callback error: {e}")
-        
-        pipeline.set_status_callback(status_callback)
-        
-        # Execute pipeline in background thread
-        import threading
-        
-        def execute_pipeline():
-            try:
-                status_tracker.start_task(request_id, "Starting AI development pipeline...")
-                
-                # Execute the complete pipeline
-                import asyncio
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                result = loop.run_until_complete(pipeline.execute_pipeline(user_request, context))
-                
-                if result.success:
-                    summary = pipeline.get_pipeline_summary(result)
-                    status_tracker.complete_task(request_id, summary)
-                else:
-                    error_msg = result.error_message or "Pipeline execution failed"
-                    status_tracker.fail_task(request_id, error_msg)
-                    
-            except Exception as e:
-                status_tracker.fail_task(request_id, str(e))
-        
-        thread = threading.Thread(target=execute_pipeline, daemon=True)
-        thread.start()
-        
-        return jsonify({
-            "status": "started",
-            "request_id": request_id,
-            "message": "AI pipeline started - complete development workflow in progress"
-        })
-        
-    except Exception as e:
-        return jsonify({"error": f"Failed to start AI pipeline: {str(e)}"}), 500
 
-@app.route('/api/pipeline-status/<request_id>', methods=['GET'])
-def get_pipeline_status(request_id):
-    """Get status of AI pipeline request"""
-    try:
-        from utils.status_tracker import status_tracker
-        
-        task_summary = status_tracker.get_task_summary(request_id)
-        if not task_summary:
-            return jsonify({"error": "Request not found"}), 404
-        
-        return jsonify(task_summary)
-        
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
-@app.route('/api/debug/pipeline/<request_id>', methods=['GET'])
-def get_pipeline_debug_info(request_id):
-    """Get detailed debug information for a pipeline request"""
-    try:
-        from utils.advanced_logger import logger, LogCategory
-        from utils.request_tracer import tracer
-        from utils.performance_monitor import performance_monitor
-        from utils.error_analyzer import error_analyzer
-        
-        # Get trace information
-        trace = tracer.get_trace(request_id)
-        if not trace:
-            return jsonify({"error": "Request trace not found"}), 404
-        
-        # Get performance summary for this trace
-        performance_summary = trace.get_performance_summary()
-        
-        # Get related logs
-        logs = logger.get_logs(request_id=request_id, limit=100)
-        
-        # Get any related errors
-        error_summary = error_analyzer.get_error_summary()
-        
-        debug_info = {
-            "request_id": request_id,
-            "trace": {
-                "status": trace.status.value,
-                "request_type": trace.request_type,
-                "duration_ms": trace.total_duration_ms,
-                "event_count": len(trace.events),
-                "start_time": trace.start_time,
-                "end_time": trace.end_time,
-                "error_summary": trace.error_summary
-            },
-            "performance": performance_summary,
-            "events": [
-                {
-                    "event_id": event.event_id,
-                    "event_type": event.event_type.value,
-                    "component": event.component,
-                    "operation": event.operation,
-                    "status": event.status.value,
-                    "timestamp": event.timestamp,
-                    "duration_ms": event.duration_ms,
-                    "metadata": event.metadata,
-                    "error_info": event.error_info
-                }
-                for event in trace.events
-            ],
-            "logs": [
-                {
-                    "timestamp": log.timestamp,
-                    "level": log.level.value,
-                    "category": log.category.value,
-                    "message": log.message,
-                    "context": log.context,
-                    "duration_ms": log.duration_ms
-                }
-                for log in logs
-            ],
-            "system_errors": error_summary
-        }
-        
-        logger.info(LogCategory.SYSTEM, f"Debug info requested for pipeline {request_id}",
-                   context={"trace_found": trace is not None, "events": len(trace.events) if trace else 0})
-        
-        return jsonify(debug_info)
-        
-    except Exception as e:
-        logger.error(LogCategory.SYSTEM, f"Error getting debug info: {e}")
-        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/debug/llm-trace/<request_id>', methods=['GET'])
 def get_llm_trace(request_id):
@@ -995,91 +838,59 @@ Be helpful, concise, and practical. Always consider the current project context 
                 needs_modification = any(keyword in message.lower() for keyword in modification_keywords)
                 
                 if needs_modification and "don't" not in message.lower() and "how to" not in message.lower():
-                    # This looks like a code modification request - use the complete AI pipeline
+                    # This looks like a code modification request - use the simple code modification system
                     try:
-                        from code_modification.build_pipeline import BuildPipelineService
+                        from code_modification.code_modifier import CodeModificationService, ModificationRequest
                         
-                        # Create status tracking
-                        status_tracker.create_task(request_id, total_steps=6, metadata={
-                            "type": "ai_pipeline_chat",
-                            "description": message,
-                            "conversation_id": conversation_id,
-                            "user_id": "chat_user"
-                        })
+                        logger.info(LogCategory.CODE_MOD, f"Starting code modification from chat: {message[:100]}...")
                         
-                        status_tracker.start_task(request_id, "Starting AI pipeline from chat...")
+                        # Use the simple code modification service
+                        modifier = CodeModificationService(flutter_manager.project_path)
                         
-                        # Use the complete AI pipeline for code modifications
-                        pipeline = BuildPipelineService(flutter_manager.project_path, flutter_manager)
+                        # Create modification request
+                        mod_request = ModificationRequest(
+                            description=message,
+                            request_id=request_id
+                        )
                         
-                        # Execute the complete pipeline
+                        # Execute modification
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
-                        pipeline_result = loop.run_until_complete(pipeline.execute_pipeline(
-                            user_request=message,
-                            context={"source": "chat", "conversation_id": conversation_id, "request_id": request_id}
-                        ))
+                        mod_result = loop.run_until_complete(modifier.modify_code(mod_request))
                         
-                        if pipeline_result.success:
-                            ai_response = f"🎉 I've successfully implemented your request using the complete AI pipeline!\n\n"
+                        if mod_result.success:
+                            ai_response = f"🎉 I've successfully implemented your request!\n\n"
+                            ai_response += f"**Changes Made:** {mod_result.changes_summary}\n\n"
                             
-                            # Add modification details
-                            if pipeline_result.modification_result:
-                                mod_result = pipeline_result.modification_result
-                                ai_response += f"**Changes Made:** {mod_result.changes_summary}\n\n"
-                                
-                                if mod_result.modified_files:
-                                    ai_response += f"**Modified Files:** {', '.join(mod_result.modified_files)}\n"
-                                if mod_result.created_files:
-                                    ai_response += f"**Created Files:** {', '.join(mod_result.created_files)}\n"
-                                if mod_result.deleted_files:
-                                    ai_response += f"**Deleted Files:** {', '.join(mod_result.deleted_files)}\n"
-                                ai_response += "\n"
-                            
-                            # Add analysis results
-                            if pipeline_result.final_analysis:
-                                final_analysis = pipeline_result.final_analysis
-                                if final_analysis.success:
-                                    ai_response += "✅ **Code Analysis:** No errors found - your code is clean!\n\n"
-                                else:
-                                    error_count = len(final_analysis.errors)
-                                    ai_response += f"⚠️ **Code Analysis:** {error_count} errors remain after pipeline execution.\n\n"
-                            
-                            # Add fixing results if applicable
-                            if pipeline_result.fixing_result:
-                                fixing = pipeline_result.fixing_result
-                                errors_fixed = fixing.initial_errors - fixing.final_errors
-                                if errors_fixed > 0:
-                                    ai_response += f"🔧 **Error Fixing:** Fixed {errors_fixed} errors in {fixing.total_attempts} attempts.\n\n"
-                            
-                            # Add performance summary
-                            summary = pipeline.get_pipeline_summary(pipeline_result)
-                            ai_response += f"⏱️ **Pipeline completed** in {summary['total_time']} with {summary['steps_completed']}/{summary['total_steps']} steps successful."
+                            if mod_result.modified_files:
+                                ai_response += f"**Modified Files:** {', '.join(mod_result.modified_files)}\n"
+                            if mod_result.created_files:
+                                ai_response += f"**Created Files:** {', '.join(mod_result.created_files)}\n"
+                            if mod_result.deleted_files:
+                                ai_response += f"**Deleted Files:** {', '.join(mod_result.deleted_files)}\n"
                             
                             if flutter_manager.is_running:
                                 ai_response += "\n\n🔄 Hot reload was automatically triggered - you should see your changes live!"
                             else:
                                 ai_response += "\n\nℹ️ Start your Flutter development server to see the changes."
                             
-                            # Update status tracking as successful
-                            status_tracker.complete_task(request_id, summary)
+                            logger.info(LogCategory.CODE_MOD, f"Code modification completed successfully: {mod_result.changes_summary}")
                         else:
                             ai_response = f"❌ I encountered issues while implementing your request:\n\n"
-                            ai_response += f"**Error:** {pipeline_result.error_message or 'Pipeline execution failed'}\n\n"
-                            
-                            # Update status tracking as failed
-                            status_tracker.fail_task(request_id, pipeline_result.error_message or 'Pipeline execution failed')
+                            if mod_result.errors:
+                                ai_response += f"**Errors:** {', '.join(mod_result.errors)}\n\n"
                             
                             # Provide fallback guidance
                             ai_response += "Let me provide some guidance instead:\n\n"
                             messages = [{"role": "user", "content": f"The user asked: {message}\n\nProvide helpful guidance about how to implement this in Flutter."}]
                             response = llm_executor.execute(messages=messages, system_prompt=system_prompt)
                             ai_response += response.text
+                            
+                            logger.warn(LogCategory.CODE_MOD, f"Code modification failed: {', '.join(mod_result.errors)}")
                     
                     except Exception as e:
                         print(f"Error in code modification: {e}")
-                        # Update status tracking as failed
-                        status_tracker.fail_task(request_id, str(e))
+                        logger.error(LogCategory.CODE_MOD, f"Code modification error: {str(e)}")
                         
                         ai_response = f"I had trouble modifying the code directly, but I can still help you with guidance!\n\n"
                         
@@ -1206,20 +1017,6 @@ def chat_clear_conversation(conversation_id):
     except Exception as e:
         return jsonify({"error": f"Failed to clear conversation: {str(e)}"}), 500
 
-@app.route('/api/chat/status/<request_id>', methods=['GET'])
-def chat_get_request_status(request_id):
-    """Get status of a chat request (AI pipeline)"""
-    try:
-        from utils.status_tracker import status_tracker
-        
-        task_summary = status_tracker.get_task_summary(request_id)
-        if not task_summary:
-            return jsonify({"error": "Request not found"}), 404
-        
-        return jsonify(task_summary)
-        
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/demo/update-counter', methods=['POST'])
 def demo_update_counter():
