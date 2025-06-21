@@ -108,7 +108,12 @@ class FlutterProjectAnalyzer:
         start_time = time.time()
         
         if MONITORING_AVAILABLE:
-            logger.info(LogCategory.SYSTEM, "Starting project analysis")
+            logger.info(LogCategory.PROJECT_ANALYSIS, "Starting Flutter project analysis", 
+                       context={
+                           "project_path": str(self.project_path),
+                           "pubspec_exists": self.pubspec_path.exists(),
+                           "lib_exists": self.lib_path.exists()
+                       })
         
         print(f"Analyzing Flutter project at: {self.project_path}")
         
@@ -128,13 +133,19 @@ class FlutterProjectAnalyzer:
             # Detect architecture pattern
             self._detect_architecture_pattern(project_structure)
             
-            # Simple completion logging
+            # Enhanced completion logging
+            analysis_duration = time.time() - start_time
             if MONITORING_AVAILABLE:
-                logger.info(LogCategory.SYSTEM, "Project analysis completed successfully",
+                logger.info(LogCategory.PROJECT_ANALYSIS, "Project analysis completed successfully",
                            context={
-                               "dart_files": len(project_structure.dart_files),
-                               "dependencies": len(project_structure.dependencies),
-                               "architecture": project_structure.architecture_pattern
+                               "project_name": project_structure.name,
+                               "dart_files_count": len(project_structure.dart_files),
+                               "dependencies_count": len(project_structure.dependencies),
+                               "total_files": project_structure.total_files,
+                               "architecture_pattern": project_structure.architecture_pattern,
+                               "patterns_detected": project_structure.patterns_detected,
+                               "lib_structure": project_structure.lib_structure,
+                               "analysis_duration_seconds": round(analysis_duration, 2)
                            })
             
             print(f"Analysis complete: {len(project_structure.dart_files)} Dart files, {len(project_structure.dependencies)} dependencies")
@@ -143,8 +154,14 @@ class FlutterProjectAnalyzer:
         except Exception as e:
             error_message = str(e)
             
+            analysis_duration = time.time() - start_time
             if MONITORING_AVAILABLE:
-                logger.error(LogCategory.SYSTEM, f"Project analysis failed: {error_message}")
+                logger.error(LogCategory.PROJECT_ANALYSIS, f"Project analysis failed: {error_message}",
+                           context={
+                               "project_path": str(self.project_path),
+                               "analysis_duration_seconds": round(analysis_duration, 2),
+                               "error_type": type(e).__name__
+                           })
             
             print(f"Error during project analysis: {error_message}")
             raise
@@ -152,8 +169,13 @@ class FlutterProjectAnalyzer:
     def _analyze_pubspec(self, structure: ProjectStructure):
         """Analyze pubspec.yaml file"""
         if not self.pubspec_path.exists():
+            if MONITORING_AVAILABLE:
+                logger.warn(LogCategory.PROJECT_ANALYSIS, "pubspec.yaml not found in project")
             print("pubspec.yaml not found")
             return
+        
+        if MONITORING_AVAILABLE:
+            logger.debug(LogCategory.PROJECT_ANALYSIS, "Analyzing pubspec.yaml")
         
         try:
             with open(self.pubspec_path, 'r', encoding='utf-8') as f:
@@ -182,19 +204,40 @@ class FlutterProjectAnalyzer:
                     is_dev=True
                 ))
             
+            if MONITORING_AVAILABLE:
+                logger.info(LogCategory.PROJECT_ANALYSIS, f"Pubspec analysis completed",
+                           context={
+                               "project_name": structure.name,
+                               "dependencies_count": len([d for d in structure.dependencies if not d.is_dev]),
+                               "dev_dependencies_count": len([d for d in structure.dependencies if d.is_dev]),
+                               "total_dependencies": len(structure.dependencies),
+                               "flutter_version": deps.get('flutter'),
+                               "dart_version": pubspec_data.get('environment', {}).get('sdk')
+                           })
+            
             print(f"Found {len(structure.dependencies)} dependencies")
             
         except Exception as e:
+            if MONITORING_AVAILABLE:
+                logger.error(LogCategory.PROJECT_ANALYSIS, f"Error analyzing pubspec.yaml: {str(e)}")
             print(f"Error analyzing pubspec.yaml: {e}")
     
     def _analyze_dart_files(self, structure: ProjectStructure):
         """Analyze all Dart files in the project"""
         if not self.lib_path.exists():
+            if MONITORING_AVAILABLE:
+                logger.warn(LogCategory.PROJECT_ANALYSIS, "lib directory not found in project")
             print("lib directory not found")
             return
         
+        if MONITORING_AVAILABLE:
+            logger.debug(LogCategory.PROJECT_ANALYSIS, "Starting Dart files analysis")
+        
         dart_files = list(self.lib_path.rglob("*.dart"))
         structure.total_files = len(dart_files)
+        
+        if MONITORING_AVAILABLE:
+            logger.info(LogCategory.PROJECT_ANALYSIS, f"Found {len(dart_files)} Dart files to analyze")
         
         print(f"Found {len(dart_files)} Dart files")
         

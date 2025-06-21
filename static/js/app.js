@@ -22,6 +22,7 @@ class FlutterDevServer {
         this.bindGlobalEvents();
         this.loadChatActivity();
         this.initFlutterLoadingHandlers();
+        this.ensureFlutterIsRunning();
     }
     
     /**
@@ -816,6 +817,59 @@ class FlutterDevServer {
         const div = document.createElement('div');
         div.textContent = text || '';
         return div.innerHTML;
+    }
+    
+    /**
+     * Ensure Flutter is running when page loads
+     */
+    async ensureFlutterIsRunning() {
+        try {
+            const response = await fetch(`${this.apiBase}/status`);
+            const data = await response.json();
+            
+            // If Flutter is not running, start it
+            if (!data.running) {
+                console.log('Flutter not running, starting automatically...');
+                this.showToast('Starting Flutter development server...', 'info');
+                await this.startFlutter();
+            } else if (!data.ready) {
+                console.log('Flutter starting up, waiting for ready state...');
+                this.showToast('Flutter is starting up...', 'info');
+                // Wait a bit and check again
+                setTimeout(() => this.ensureFlutterIsRunning(), 3000);
+            } else {
+                console.log('Flutter is already running and ready');
+            }
+        } catch (error) {
+            console.error('Failed to check Flutter status:', error);
+            // Try starting Flutter anyway
+            console.log('Starting Flutter due to status check failure...');
+            await this.startFlutter();
+        }
+    }
+    
+    /**
+     * Start Flutter development server
+     */
+    async startFlutter() {
+        try {
+            const response = await fetch(`${this.apiBase}/start`, {
+                method: 'POST'
+            });
+            
+            if (response.ok) {
+                console.log('Flutter start command sent successfully');
+                this.showToast('Flutter development server starting...', 'success');
+                // Show loading for Flutter app
+                this.showFlutterLoading();
+            } else {
+                console.error('Failed to start Flutter:', response.status);
+                this.showToast('Failed to start Flutter development server', 'danger');
+            }
+        } catch (error) {
+            console.error('Error starting Flutter:', error);
+            this.showToast('Error starting Flutter development server', 'danger');
+        }
     }
     
     /**

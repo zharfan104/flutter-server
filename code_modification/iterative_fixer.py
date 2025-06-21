@@ -13,6 +13,23 @@ from pathlib import Path
 from .dart_analysis import DartAnalysisService, AnalysisResult, AnalysisIssue, AnalysisType
 from .llm_executor import SimpleLLMExecutor, LLMResponse
 
+# Import advanced logging and monitoring
+try:
+    from utils.advanced_logger import logger, LogCategory, LogLevel
+    from utils.request_tracer import tracer, EventContext, TraceEventType
+    from utils.performance_monitor import performance_monitor, TimingContext
+    from utils.error_analyzer import error_analyzer
+    MONITORING_AVAILABLE = True
+except ImportError:
+    MONITORING_AVAILABLE = False
+
+# Empty context manager for backward compatibility
+class EmptyContext:
+    def __enter__(self):
+        return self
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
 
 @dataclass
 class FixAttempt:
@@ -114,20 +131,46 @@ Provide ONLY the corrected file contents, no explanations.
         attempts = []
         files_modified = set()
         
+        if MONITORING_AVAILABLE:
+            logger.info(LogCategory.ERROR_FIXING, "Starting iterative error fixing process",
+                       context={
+                           "max_attempts": max_attempts,
+                           "project_path": str(self.project_path)
+                       })
+        
         self._update_status("Starting iterative error fixing process...")
         
         # Step 1: Run flutter pub get to ensure dependencies are up to date
         self._update_status("Running flutter pub get to update dependencies...")
+        if MONITORING_AVAILABLE:
+            logger.debug(LogCategory.ERROR_FIXING, "Running flutter pub get")
+        
         pub_get_success, pub_get_output = self.analysis_service.run_flutter_pub_get()
         if not pub_get_success:
+            if MONITORING_AVAILABLE:
+                logger.warn(LogCategory.ERROR_FIXING, f"flutter pub get failed: {pub_get_output}")
             self._update_status(f"Warning: flutter pub get failed: {pub_get_output}")
         else:
+            if MONITORING_AVAILABLE:
+                logger.info(LogCategory.ERROR_FIXING, "Dependencies updated successfully")
             self._update_status("Dependencies updated successfully")
         
         # Step 2: Initial analysis
         self._update_status("Running initial Dart analysis...")
+        if MONITORING_AVAILABLE:
+            logger.debug(LogCategory.ERROR_FIXING, "Running initial Dart analysis")
+        
         initial_analysis = self.analysis_service.run_analysis()
         initial_errors = len(initial_analysis.errors)
+        
+        if MONITORING_AVAILABLE:
+            logger.info(LogCategory.ERROR_FIXING, f"Initial analysis completed",
+                       context={
+                           "initial_errors_count": initial_errors,
+                           "warnings_count": len(initial_analysis.warnings),
+                           "analysis_success": initial_analysis.success,
+                           "analysis_time_seconds": round(initial_analysis.execution_time, 2)
+                       })
         
         if initial_analysis.success:
             self._update_status("No errors found! Code is already clean ✅")
@@ -152,24 +195,45 @@ Provide ONLY the corrected file contents, no explanations.
             attempt_start = time.time()
             self._update_status(f"Starting fix attempt {attempt_num}/{max_attempts}")
             
+            if MONITORING_AVAILABLE:
+                logger.info(LogCategory.ERROR_FIXING, f"Starting fix attempt {attempt_num}",
+                           context={
+                               "attempt_number": attempt_num,
+                               "max_attempts": max_attempts,
+                               "current_errors": len(current_analysis.errors)
+                           })
+            
             errors_before = len(current_analysis.errors)
             
             if errors_before == 0:
                 self._update_status("All errors fixed! 🎉")
+                if MONITORING_AVAILABLE:
+                    logger.info(LogCategory.ERROR_FIXING, "All errors fixed successfully")
                 break
             
             # Generate fixes for current errors
             self._update_status(f"Generating fixes for {errors_before} errors...")
+            if MONITORING_AVAILABLE:
+                logger.debug(LogCategory.ERROR_FIXING, f"Generating fixes for {errors_before} errors")
+            
             fixes_applied, modified_files = await self._fix_current_errors(current_analysis.errors)
             
             if modified_files:
                 files_modified.update(modified_files)
                 self._update_status(f"Applied fixes to {len(modified_files)} files: {', '.join(modified_files)}")
+                if MONITORING_AVAILABLE:
+                    logger.info(LogCategory.ERROR_FIXING, f"Applied fixes to {len(modified_files)} files",
+                               context={"modified_files": list(modified_files)})
             else:
                 self._update_status("No fixes could be generated for current errors")
+                if MONITORING_AVAILABLE:
+                    logger.warn(LogCategory.ERROR_FIXING, "No fixes could be generated for current errors")
             
             # Re-analyze after fixes
             self._update_status("Re-analyzing code after fixes...")
+            if MONITORING_AVAILABLE:
+                logger.debug(LogCategory.ERROR_FIXING, "Re-analyzing code after fixes")
+            
             current_analysis = self.analysis_service.run_analysis()
             errors_after = len(current_analysis.errors)
             
@@ -185,15 +249,39 @@ Provide ONLY the corrected file contents, no explanations.
             )
             attempts.append(attempt)
             
+            # Enhanced logging for attempt results
+            if MONITORING_AVAILABLE:
+                logger.info(LogCategory.ERROR_FIXING, f"Fix attempt {attempt_num} completed",
+                           context={
+                               "attempt_number": attempt_num,
+                               "errors_before": errors_before,
+                               "errors_after": errors_after,
+                               "errors_fixed": errors_before - errors_after,
+                               "files_modified": list(modified_files),
+                               "attempt_success": errors_after == 0,
+                               "attempt_time_seconds": round(attempt_time, 2),
+                               "progress_made": errors_after < errors_before
+                           })
+            
             if errors_after == 0:
                 self._update_status("All errors fixed successfully! ✅")
+                if MONITORING_AVAILABLE:
+                    logger.info(LogCategory.ERROR_FIXING, "All errors fixed successfully")
                 break
             elif errors_after >= errors_before:
                 self._update_status(f"No progress made: {errors_after} errors remain (was {errors_before})")
+                if MONITORING_AVAILABLE:
+                    logger.warn(LogCategory.ERROR_FIXING, f"No progress made in attempt {attempt_num}",
+                               context={"errors_before": errors_before, "errors_after": errors_after})
                 if attempt_num > 3:  # Give it a few tries before considering stagnation
                     self._update_status("Multiple attempts without progress. May need manual intervention.")
+                    if MONITORING_AVAILABLE:
+                        logger.warn(LogCategory.ERROR_FIXING, "Multiple attempts without progress")
             else:
-                self._update_status(f"Progress: {errors_before} → {errors_after} errors ({errors_before - errors_after} fixed)")
+                progress_msg = f"Progress: {errors_before} → {errors_after} errors ({errors_before - errors_after} fixed)"
+                self._update_status(progress_msg)
+                if MONITORING_AVAILABLE:
+                    logger.info(LogCategory.ERROR_FIXING, progress_msg)
         
         # Step 4: Final analysis and web build test
         final_success = len(current_analysis.errors) == 0
@@ -221,11 +309,26 @@ Provide ONLY the corrected file contents, no explanations.
             error_message=None if final_success else f"Failed to fix all errors after {max_attempts} attempts"
         )
         
+        # Enhanced final logging
+        if MONITORING_AVAILABLE:
+            logger.info(LogCategory.ERROR_FIXING, f"Iterative error fixing completed",
+                       context={
+                           "success": final_success,
+                           "total_attempts": len(attempts),
+                           "initial_errors": initial_errors,
+                           "final_errors": len(current_analysis.errors),
+                           "errors_fixed": initial_errors - len(current_analysis.errors),
+                           "files_modified": list(files_modified),
+                           "total_time_seconds": round(total_time, 2),
+                           "average_time_per_attempt": round(total_time / len(attempts), 2) if attempts else 0,
+                           "max_attempts": max_attempts
+                       })
+        
         # Final status update
         if final_success:
             self._update_status(f"✅ All errors fixed in {len(attempts)} attempts ({total_time:.1f}s)")
         else:
-            self._update_status(f"❌ {current_analysis.errors} errors remain after {max_attempts} attempts")
+            self._update_status(f"❌ {len(current_analysis.errors)} errors remain after {max_attempts} attempts")
         
         return result
     

@@ -28,8 +28,12 @@ class LogCategory(Enum):
     PIPELINE = "pipeline"
     LLM = "llm"
     CODE_MOD = "code_modification"
+    PROJECT_ANALYSIS = "project_analysis"
     DART_ANALYSIS = "dart_analysis"
+    ERROR_FIXING = "error_fixing"
+    CODE_GENERATION = "code_generation"
     FILE_OPS = "file_operations"
+    FILE_OP = "file_operations"  # Alias for compatibility
     PERFORMANCE = "performance"
     ERROR = "error"
     USER = "user"

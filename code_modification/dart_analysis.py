@@ -6,10 +6,27 @@ Runs dart analyze and parses output for error detection and fixing
 import subprocess
 import os
 import re
+import time
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+
+# Import advanced logging and monitoring
+try:
+    from utils.advanced_logger import logger, LogCategory, LogLevel
+    from utils.performance_monitor import performance_monitor, TimingContext
+    from utils.error_analyzer import error_analyzer
+    MONITORING_AVAILABLE = True
+except ImportError:
+    MONITORING_AVAILABLE = False
+
+# Empty context manager for backward compatibility
+class EmptyContext:
+    def __enter__(self):
+        return self
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
 
 
 class AnalysisType(Enum):
@@ -62,7 +79,6 @@ class DartAnalysisService:
         Returns:
             AnalysisResult with parsed issues
         """
-        import time
         start_time = time.time()
         
         # Default to lib directory if no target specified
@@ -70,8 +86,20 @@ class DartAnalysisService:
             target_path = str(self.lib_path)
         else:
             target_path = str(self.project_path / target_path)
+        
+        if MONITORING_AVAILABLE:
+            logger.info(LogCategory.DART_ANALYSIS, f"Starting Dart analysis",
+                       context={
+                           "target_path": target_path,
+                           "project_path": str(self.project_path),
+                           "analysis_scope": "lib" if target_path == str(self.lib_path) else "custom"
+                       })
             
         if not os.path.exists(target_path):
+            error_msg = f"Target path does not exist: {target_path}"
+            if MONITORING_AVAILABLE:
+                logger.error(LogCategory.DART_ANALYSIS, error_msg)
+            
             return AnalysisResult(
                 success=False,
                 issues=[],
@@ -80,28 +108,41 @@ class DartAnalysisService:
                     file_path=target_path,
                     line=0,
                     column=0,
-                    message=f"Target path does not exist: {target_path}"
+                    message=error_msg
                 )],
                 warnings=[],
-                output=f"Error: Target path does not exist: {target_path}",
+                output=f"Error: {error_msg}",
                 execution_time=time.time() - start_time
             )
         
         try:
             # Run dart analyze command
             command = ["dart", "analyze", target_path]
+            if MONITORING_AVAILABLE:
+                logger.debug(LogCategory.DART_ANALYSIS, f"Executing command: {' '.join(command)}")
+            
             print(f"Running: {' '.join(command)}")
             
-            result = subprocess.run(
-                command,
-                cwd=str(self.project_path),
-                capture_output=True,
-                text=True,
-                timeout=60  # 60 second timeout
-            )
+            with TimingContext("dart_analyze_execution") if MONITORING_AVAILABLE else EmptyContext():
+                result = subprocess.run(
+                    command,
+                    cwd=str(self.project_path),
+                    capture_output=True,
+                    text=True,
+                    timeout=60  # 60 second timeout
+                )
             
             execution_time = time.time() - start_time
             full_output = result.stdout + result.stderr
+            
+            if MONITORING_AVAILABLE:
+                logger.debug(LogCategory.DART_ANALYSIS, f"Dart analyze command completed",
+                           context={
+                               "return_code": result.returncode,
+                               "execution_time_seconds": round(execution_time, 2),
+                               "output_length": len(full_output),
+                               "command": ' '.join(command)
+                           })
             
             # Parse the output
             issues = self._parse_analyze_output(full_output)
@@ -110,6 +151,19 @@ class DartAnalysisService:
             
             # Success if no errors (warnings are OK)
             success = len(errors) == 0 and result.returncode == 0
+            
+            if MONITORING_AVAILABLE:
+                logger.info(LogCategory.DART_ANALYSIS, f"Dart analysis completed",
+                           context={
+                               "success": success,
+                               "total_issues": len(issues),
+                               "errors_count": len(errors),
+                               "warnings_count": len(warnings),
+                               "execution_time_seconds": round(execution_time, 2),
+                               "return_code": result.returncode,
+                               "error_files": list(set(e.file_path for e in errors)),
+                               "warning_files": list(set(w.file_path for w in warnings))
+                           })
             
             return AnalysisResult(
                 success=success,
@@ -121,6 +175,11 @@ class DartAnalysisService:
             )
             
         except subprocess.TimeoutExpired:
+            timeout_msg = "Dart analyze timed out after 60 seconds"
+            if MONITORING_AVAILABLE:
+                logger.error(LogCategory.DART_ANALYSIS, timeout_msg,
+                           context={"target_path": target_path, "timeout_seconds": 60})
+            
             return AnalysisResult(
                 success=False,
                 issues=[],
@@ -129,7 +188,7 @@ class DartAnalysisService:
                     file_path=target_path,
                     line=0,
                     column=0,
-                    message="Dart analyze timed out after 60 seconds"
+                    message=timeout_msg
                 )],
                 warnings=[],
                 output="Timeout: dart analyze took too long",
@@ -137,6 +196,18 @@ class DartAnalysisService:
             )
             
         except Exception as e:
+            execution_time = time.time() - start_time
+            error_msg = f"Failed to run dart analyze: {str(e)}"
+            
+            if MONITORING_AVAILABLE:
+                logger.error(LogCategory.DART_ANALYSIS, error_msg,
+                           context={
+                               "target_path": target_path,
+                               "execution_time_seconds": round(execution_time, 2),
+                               "error_type": type(e).__name__,
+                               "error_details": str(e)
+                           })
+            
             return AnalysisResult(
                 success=False,
                 issues=[],
@@ -145,11 +216,11 @@ class DartAnalysisService:
                     file_path=target_path,
                     line=0,
                     column=0,
-                    message=f"Failed to run dart analyze: {str(e)}"
+                    message=error_msg
                 )],
                 warnings=[],
                 output=f"Error: {str(e)}",
-                execution_time=time.time() - start_time
+                execution_time=execution_time
             )
     
     def _parse_analyze_output(self, output: str) -> List[AnalysisIssue]:

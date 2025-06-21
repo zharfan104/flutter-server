@@ -493,7 +493,7 @@ Important guidelines:
                     print(f"Deleted file: {file_to_delete}")
                     
                     if MONITORING_AVAILABLE:
-                        logger.info(LogCategory.FILE_OP, f"Deleted file: {file_to_delete}",
+                        logger.info(LogCategory.FILE_OPS, f"Deleted file: {file_to_delete}",
                                    context={"operation": "delete", "file_path": file_to_delete, "request_id": request_id})
                 else:
                     warnings.append(f"File to delete not found: {file_to_delete}")
@@ -522,14 +522,14 @@ Important guidelines:
                     print(f"Created file: {modification.file_path}")
                     
                     if MONITORING_AVAILABLE:
-                        logger.info(LogCategory.FILE_OP, f"Created file: {modification.file_path}",
+                        logger.info(LogCategory.FILE_OPS, f"Created file: {modification.file_path}",
                                    context={"operation": "create", "file_path": modification.file_path, "request_id": request_id})
                 else:
                     modified_files.append(modification.file_path)
                     print(f"Modified file: {modification.file_path}")
                     
                     if MONITORING_AVAILABLE:
-                        logger.info(LogCategory.FILE_OP, f"Modified file: {modification.file_path}",
+                        logger.info(LogCategory.FILE_OPS, f"Modified file: {modification.file_path}",
                                    context={"operation": "modify", "file_path": modification.file_path, "request_id": request_id})
             
             # Validate the modifications (basic syntax check)
