@@ -572,8 +572,21 @@ class ChatManager {
     }
 }
 
+// Function to initialize chat (called from pages that include chat components)
+function initializeChat() {
+    if (!window.chatManager && document.getElementById('messages-container') && document.getElementById('chat-form')) {
+        window.chatManager = new ChatManager();
+        console.log('ChatManager initialized via initializeChat()');
+    }
+}
+
 // Global functions for template usage
 async function startNewConversation() {
+    if (!window.chatManager) {
+        console.warn('ChatManager not initialized - cannot start new conversation');
+        return;
+    }
+    
     try {
         const response = await fetch('/api/chat/new', {
             method: 'POST',
@@ -598,6 +611,10 @@ async function startNewConversation() {
 }
 
 async function clearCurrentConversation() {
+    if (!window.chatManager) {
+        console.warn('ChatManager not initialized - cannot clear conversation');
+        return;
+    }
     if (!chatManager.currentConversationId) return;
     
     if (!confirm('Are you sure you want to clear this conversation? This action cannot be undone.')) {
@@ -624,6 +641,10 @@ async function clearCurrentConversation() {
 }
 
 async function deleteConversation(conversationId) {
+    if (!window.chatManager) {
+        console.warn('ChatManager not initialized - cannot delete conversation');
+        return;
+    }
     if (!confirm('Are you sure you want to delete this conversation? This action cannot be undone.')) {
         return;
     }
@@ -651,6 +672,10 @@ async function deleteConversation(conversationId) {
 }
 
 function exportConversation() {
+    if (!window.chatManager) {
+        console.warn('ChatManager not initialized - cannot export conversation');
+        return;
+    }
     if (!chatManager.currentConversationId) return;
     
     // Get current conversation data and download as JSON
@@ -679,7 +704,10 @@ function exportConversation() {
 
 // Initialize chat manager when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    window.chatManager = new ChatManager();
+    // Only initialize ChatManager if the required elements exist (i.e., we're on the chat page)
+    if (document.getElementById('messages-container') && document.getElementById('chat-form')) {
+        window.chatManager = new ChatManager();
+    }
 });
 
 // Cleanup on page unload
