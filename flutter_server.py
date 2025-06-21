@@ -20,6 +20,7 @@ class FlutterManager:
         self.ready = False
         self.repo_url = os.environ.get('REPO_URL')
         self.github_token = os.environ.get('GITHUB_TOKEN')
+        self.dev_mode = os.environ.get('FLUTTER_DEV_MODE', 'fast').lower()  # fast, debug, profile
         
     def setup_project(self):
         """Clone repository or create Flutter project if no repo URL"""
@@ -64,65 +65,67 @@ class FlutterManager:
             return {"error": f"Git pull failed: {e.stderr}"}
     
     def start_flutter(self):
-        """Start Flutter web server"""
+        """Start Flutter development server with hot reload"""
         if self.flutter_process:
             return {"error": "Flutter already running"}
         
         self.setup_project()
         
-        # Build Flutter web app first
-        print("Building Flutter web app...")
-        try:
-            build_result = subprocess.run(
-                ["flutter", "build", "web"],
-                cwd=self.project_path,
-                capture_output=True,
-                text=True,
-                timeout=60
-            )
-            if build_result.returncode != 0:
-                return {"error": f"Flutter build failed: {build_result.stderr}"}
-            print("✓ Flutter web build completed")
-        except subprocess.TimeoutExpired:
-            return {"error": "Flutter build timed out"}
-        except Exception as e:
-            return {"error": f"Flutter build error: {str(e)}"}
+        # Start Flutter development server directly (no build step needed)
+        print("Starting Flutter development server...")
         
-        # Start a simple HTTP server to serve the built web app
-        import http.server
-        import socketserver
-        import os
-        
-        web_dir = os.path.join(self.project_path, "build", "web")
-        if not os.path.exists(web_dir):
-            return {"error": "Flutter web build directory not found"}
-        
-        # Create a simple HTTP server in a separate process
+        # Base command
         cmd = [
-            "python3", "-m", "http.server", "8080",
-            "--bind", "0.0.0.0",
-            "--directory", web_dir
+            "flutter", "run",
+            "-d", "web-server",
+            "--web-port=8080",
+            "--web-hostname=0.0.0.0"
         ]
         
-        print(f"Starting Flutter web server: {' '.join(cmd)}")
+        # Add performance optimizations based on mode
+        if self.dev_mode == 'fast':
+            cmd.extend([
+                "--dart-define=FLUTTER_WEB_USE_SKIA=false",  # Disable SKIA for faster loading
+                "--dart-define=FLUTTER_WEB_USE_EXPERIMENTAL_CANVAS_TEXT=false",
+                "--web-browser-flag=--disable-web-security",  # Development only
+                "--web-browser-flag=--disable-features=VizDisplayCompositor",
+                "--web-browser-flag=--disable-background-timer-throttling",
+                "--web-browser-flag=--disable-renderer-backgrounding",
+                "--web-browser-flag=--disable-backgrounding-occluded-windows"
+            ])
+        elif self.dev_mode == 'profile':
+            cmd.extend([
+                "--profile",
+                "--web-renderer=canvaskit"  # Better performance in profile mode
+            ])
+        # debug mode uses default settings
         
-        self.flutter_process = subprocess.Popen(
-            cmd,
-            cwd=self.project_path,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            universal_newlines=True,
-            bufsize=0
-        )
+        print(f"Starting Flutter dev server: {' '.join(cmd)}")
         
-        self.is_running = True
-        self.ready = True  # Static server is ready immediately
-        
-        # Start output reader thread
-        threading.Thread(target=self._read_output, daemon=True).start()
-        
-        return {"status": "starting", "pid": self.flutter_process.pid}
+        try:
+            self.flutter_process = subprocess.Popen(
+                cmd,
+                cwd=self.project_path,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                bufsize=0
+            )
+            
+            self.is_running = True
+            self.ready = False  # Will be set to True when we detect "Web development server" in output
+            
+            # Start output reader thread
+            threading.Thread(target=self._read_output, daemon=True).start()
+            
+            # Wait a moment for startup
+            time.sleep(2)
+            
+            return {"status": "starting", "pid": self.flutter_process.pid}
+            
+        except Exception as e:
+            return {"error": f"Failed to start Flutter dev server: {str(e)}"}
     
     def _read_output(self):
         """Read Flutter output continuously"""
@@ -136,9 +139,16 @@ class FlutterManager:
                     if len(self.output_buffer) > 1000:
                         self.output_buffer = self.output_buffer[-500:]
                     
-                    if "is being served at" in line or "Running application at" in line:
+                    # Detect when Flutter dev server is ready
+                    if any(phrase in line.lower() for phrase in [
+                        "is being served at",
+                        "running application at", 
+                        "web development server is available at",
+                        "http://",
+                        "application started"
+                    ]):
                         self.ready = True
-                        print("Flutter is ready!")
+                        print("Flutter development server is ready!")
                 
                 if self.flutter_process.poll() is not None:
                     print("Flutter process ended")
@@ -151,40 +161,26 @@ class FlutterManager:
     
     
     def hot_reload(self):
-        """Trigger hot reload (rebuild for static web)"""
+        """Trigger hot reload using Flutter's built-in hot reload"""
         if not self.flutter_process or not self.is_running:
             return {"error": "Flutter not running"}
         
         try:
-            print("Rebuilding Flutter web app...")
+            print("Triggering Flutter hot reload...")
             
-            # Build Flutter web app
-            build_result = subprocess.run(
-                ["flutter", "build", "web"],
-                cwd=self.project_path,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
+            # Send 'r' command to Flutter dev server for hot reload
+            self.flutter_process.stdin.write('r\n')
+            self.flutter_process.stdin.flush()
             
-            if build_result.returncode == 0:
-                print("✓ Flutter web rebuild completed")
-                return {
-                    "status": "rebuilt",
-                    "success": True,
-                    "message": "Flutter web app rebuilt successfully"
-                }
-            else:
-                return {
-                    "status": "rebuild_failed", 
-                    "success": False,
-                    "error": build_result.stderr
-                }
+            print("✓ Hot reload command sent")
+            return {
+                "status": "hot_reloaded",
+                "success": True,
+                "message": "Hot reload triggered successfully"
+            }
             
-        except subprocess.TimeoutExpired:
-            return {"error": "Flutter rebuild timed out"}
         except Exception as e:
-            return {"error": f"Failed to rebuild: {str(e)}"}
+            return {"error": f"Failed to trigger hot reload: {str(e)}"}
     
     
     def update_file(self, file_path, content):
@@ -919,7 +915,7 @@ def static_file_handler(filename):
 @app.route('/app/')
 @app.route('/app/<path:path>')
 def flutter_app(path=''):
-    """Proxy Flutter app requests to the Flutter development server"""
+    """Proxy Flutter app requests to the Flutter development server with caching optimization"""
     import requests
     try:
         flutter_url = f'http://127.0.0.1:8080/{path}'
@@ -928,10 +924,25 @@ def flutter_app(path=''):
         def generate():
             for chunk in resp.iter_content(chunk_size=1024):
                 yield chunk
+        
+        # Optimize headers for better performance
+        headers = dict(resp.headers)
+        
+        # Add caching for static assets
+        if any(ext in path for ext in ['.js', '.css', '.woff', '.woff2', '.ttf', '.otf']):
+            headers['Cache-Control'] = 'public, max-age=3600, immutable'  # 1 hour cache
+        elif any(ext in path for ext in ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico']):
+            headers['Cache-Control'] = 'public, max-age=86400'  # 24 hour cache for images
+        else:
+            headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'  # No cache for HTML/main app
+            
+        # Enable compression hint
+        if 'content-encoding' not in headers:
+            headers['Vary'] = 'Accept-Encoding'
                 
         return Response(generate(), 
                        status=resp.status_code,
-                       headers=dict(resp.headers))
+                       headers=headers)
     except Exception as e:
         return f"Flutter app not available: {str(e)}", 503
 
