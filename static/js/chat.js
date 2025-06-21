@@ -415,7 +415,22 @@ class ChatManager {
         if (window.flutterDevServer && window.flutterDevServer.showToast) {
             window.flutterDevServer.showToast(message, type);
         } else {
+            // Fallback: try to create a simple toast notification
             console.log(`Toast [${type}]: ${message}`);
+            const toastContainer = document.getElementById('toast-container');
+            if (toastContainer) {
+                const toast = document.createElement('div');
+                toast.className = `toast show align-items-center text-bg-${type} border-0`;
+                toast.setAttribute('role', 'alert');
+                toast.innerHTML = `
+                    <div class="d-flex">
+                        <div class="toast-body">${message}</div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" onclick="this.parentElement.parentElement.remove()"></button>
+                    </div>
+                `;
+                toastContainer.appendChild(toast);
+                setTimeout(() => toast.remove(), 5000);
+            }
         }
     }
 }
