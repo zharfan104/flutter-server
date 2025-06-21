@@ -1123,21 +1123,23 @@ function initializeAdvancedLogging() {
 
 async function updateAdvancedLogs() {
     try {
-        // Get system logs
+        // Get comprehensive logs (both Flutter and monitoring)
         const response = await fetch('/api/logs');
         const data = await response.json();
         
-        if (data.logs && data.logs.length > 0) {
-            // Track previously seen logs to avoid duplicates
-            if (!window.lastLogCount) {
-                window.lastLogCount = 0;
-            }
+        if (!window.lastFlutterLogCount) {
+            window.lastFlutterLogCount = 0;
+        }
+        if (!window.lastMonitoringLogCount) {
+            window.lastMonitoringLogCount = 0;
+        }
+        
+        // Process Flutter development server logs
+        if (data.flutter_logs && data.flutter_logs.length > window.lastFlutterLogCount) {
+            const newFlutterLogs = data.flutter_logs.slice(window.lastFlutterLogCount);
+            window.lastFlutterLogCount = data.flutter_logs.length;
             
-            // Only add new logs
-            const newLogs = data.logs.slice(window.lastLogCount);
-            window.lastLogCount = data.logs.length;
-            
-            newLogs.forEach(logLine => {
+            newFlutterLogs.forEach(logLine => {
                 if (window.flutterDevServer && logLine.trim()) {
                     // Determine log level based on content
                     let level = 'info';
@@ -1153,6 +1155,37 @@ async function updateAdvancedLogs() {
                 }
             });
         }
+        
+        // Process advanced monitoring logs
+        if (data.monitoring_logs && data.monitoring_logs.length > window.lastMonitoringLogCount) {
+            const newMonitoringLogs = data.monitoring_logs.slice(window.lastMonitoringLogCount);
+            window.lastMonitoringLogCount = data.monitoring_logs.length;
+            
+            newMonitoringLogs.forEach(logEntry => {
+                if (window.flutterDevServer && logEntry.message) {
+                    // Use the structured log data directly
+                    const level = logEntry.level.toLowerCase();
+                    const category = logEntry.category.toLowerCase();
+                    let message = logEntry.message;
+                    
+                    // Add context information if available
+                    if (logEntry.context && Object.keys(logEntry.context).length > 0) {
+                        const contextStr = Object.entries(logEntry.context)
+                            .map(([key, value]) => `${key}=${value}`)
+                            .join(', ');
+                        message += ` (${contextStr})`;
+                    }
+                    
+                    // Add timing information if available
+                    if (logEntry.duration_ms) {
+                        message += ` [${logEntry.duration_ms}ms]`;
+                    }
+                    
+                    window.flutterDevServer.logAdvanced(level, category, message);
+                }
+            });
+        }
+        
     } catch (error) {
         console.error('Failed to fetch logs:', error);
         if (window.flutterDevServer) {

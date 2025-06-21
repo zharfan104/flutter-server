@@ -356,13 +356,59 @@ def test_flutter():
 
 @app.route('/api/logs', methods=['GET'])
 def get_logs():
-    """Get Flutter logs for debugging"""
-    return jsonify({
-        "logs": flutter_manager.output_buffer,
-        "running": flutter_manager.is_running,
-        "ready": flutter_manager.ready,
-        "process_alive": flutter_manager.flutter_process.poll() is None if flutter_manager.flutter_process else False
-    })
+    """Get comprehensive logs including Flutter and monitoring logs"""
+    try:
+        from utils.advanced_logger import logger, LogCategory
+        
+        # Get advanced monitoring logs
+        monitoring_logs = []
+        try:
+            advanced_logs = logger.get_logs(limit=100)  # Get recent 100 logs
+            for log_entry in advanced_logs:
+                monitoring_logs.append({
+                    "timestamp": log_entry.timestamp,
+                    "level": log_entry.level.value,
+                    "category": log_entry.category.value,
+                    "message": log_entry.message,
+                    "context": log_entry.context,
+                    "request_id": log_entry.request_id,
+                    "duration_ms": log_entry.duration_ms,
+                    "tags": log_entry.tags
+                })
+        except Exception as e:
+            print(f"Error getting advanced logs: {e}")
+        
+        # Combine Flutter logs with monitoring logs
+        all_logs = []
+        
+        # Add Flutter development server logs
+        for flutter_log in flutter_manager.output_buffer:
+            all_logs.append(flutter_log)
+        
+        # Add monitoring logs 
+        for monitoring_log in monitoring_logs:
+            all_logs.append(monitoring_log)
+        
+        return jsonify({
+            "logs": all_logs,
+            "flutter_logs": flutter_manager.output_buffer,
+            "monitoring_logs": monitoring_logs,
+            "running": flutter_manager.is_running,
+            "ready": flutter_manager.ready,
+            "process_alive": flutter_manager.flutter_process.poll() is None if flutter_manager.flutter_process else False
+        })
+        
+    except Exception as e:
+        # Fallback to just Flutter logs if monitoring logs fail
+        return jsonify({
+            "logs": flutter_manager.output_buffer,
+            "flutter_logs": flutter_manager.output_buffer,
+            "monitoring_logs": [],
+            "running": flutter_manager.is_running,
+            "ready": flutter_manager.ready,
+            "process_alive": flutter_manager.flutter_process.poll() is None if flutter_manager.flutter_process else False,
+            "error": f"Failed to get monitoring logs: {str(e)}"
+        })
 
 @app.route('/api/git-pull', methods=['POST'])
 def git_pull_and_reload():
