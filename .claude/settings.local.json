@@ -19,7 +19,9 @@
       "Bash(poetry install:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "Bash(python test:*)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }

@@ -1292,6 +1292,66 @@ def project_overview():
 def chat():
     return render_template('chat.html')
 
+@app.route('/api/file-tree', methods=['GET'])
+def get_file_tree():
+    """Get project file tree structure for editor"""
+    try:
+        import os
+        from pathlib import Path
+        
+        def build_tree(directory_path, relative_path=""):
+            """Recursively build file tree structure"""
+            items = []
+            
+            try:
+                for item in sorted(os.listdir(directory_path)):
+                    if item.startswith('.'):  # Skip hidden files
+                        continue
+                        
+                    item_path = os.path.join(directory_path, item)
+                    relative_item_path = os.path.join(relative_path, item) if relative_path else item
+                    
+                    if os.path.isdir(item_path):
+                        # Skip certain directories
+                        if item in ['build', '.dart_tool', '.git', 'node_modules', '.flutter-plugins-dependencies']:
+                            continue
+                            
+                        children = build_tree(item_path, relative_item_path)
+                        if children:  # Only include directories that have children
+                            items.append({
+                                'name': item,
+                                'type': 'folder',
+                                'path': relative_item_path,
+                                'children': children
+                            })
+                    else:
+                        # Only include certain file types
+                        if item.endswith(('.dart', '.yaml', '.yml', '.md', '.json', '.xml', '.gradle', '.kt', '.swift')):
+                            items.append({
+                                'name': item,
+                                'type': 'file',
+                                'path': relative_item_path.replace(os.sep, '/')
+                            })
+            except PermissionError:
+                # Skip directories we can't read
+                pass
+                
+            return items
+        
+        project_path = flutter_manager.project_path
+        file_tree = build_tree(project_path)
+        
+        return jsonify({
+            "status": "success",
+            "file_tree": file_tree
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error", 
+            "error": str(e)
+        }), 500
+
 def main():
     print("Starting Flask server on port 5000...")
     print("Auto-starting Flutter development server...")

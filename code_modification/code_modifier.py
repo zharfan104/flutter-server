@@ -7,12 +7,15 @@ import os
 import json
 import asyncio
 import time
-from typing import Dict, List, Set, Optional, Tuple, Union
+import re
+from typing import Dict, List, Set, Optional, Tuple, Union, Any
 from dataclasses import dataclass
 from pathlib import Path
+import subprocess
 
 from .llm_executor import SimpleLLMExecutor, LLMResponse
 from .project_analyzer import FlutterProjectAnalyzer, ProjectStructure
+from .prompt_loader import prompt_loader
 
 # Import advanced logging and monitoring
 try:
@@ -42,6 +45,9 @@ class ModificationRequest:
     context: Optional[Dict] = None
     user_id: Optional[str] = None
     request_id: Optional[str] = None
+    max_retries: int = 3
+    images: Optional[List[Dict[str, str]]] = None
+    existing_changes: Optional[Set[str]] = None
 
 
 @dataclass
@@ -64,6 +70,9 @@ class FileModification:
     original_content: str
     modified_content: str
     change_description: str
+    operation: str = "modify"  # "create", "modify", "delete"
+    is_new_file: bool = False
+    validation_passed: bool = True
 
 
 class CodeModificationService:
@@ -77,61 +86,17 @@ class CodeModificationService:
         self.project_analyzer = FlutterProjectAnalyzer(str(self.project_path))
         self.project_structure = None
         
-        # Prompt templates
-        self.determine_files_prompt = """
-You are a Flutter development expert. Given a change request, determine which files need to be modified.
-
-Project Structure:
-{project_summary}
-
-Change Request: {change_request}
-
-Analyze the request and return a JSON array of file paths that need to be modified. Consider:
-1. Direct files mentioned or implied by the request
-2. Files that depend on the modified files
-3. Related files that might need updates for consistency
-
-Return only a JSON array of file paths, no additional text:
-["lib/file1.dart", "lib/file2.dart"]
-        """
+        # Initialize prompt loader
+        self.prompt_loader = prompt_loader
         
-        self.generate_code_prompt = """
-You are a Flutter development expert. Generate modified code for the specified files.
-
-Project Structure:
-{project_summary}
-
-Change Request: {change_request}
-
-Current File Contents:
-{current_contents}
-
-Files to Modify: {target_files}
-Files to Create: {files_to_create}
-Files to Delete: {files_to_delete}
-
-For each file that needs modification or creation, generate the complete new content. Format your response as:
-
-<files path="lib/example.dart">
-// Complete new file content here
-</files>
-
-<files path="lib/another_file.dart">
-// Complete new file content here  
-</files>
-
-For files to delete, respond with:
-<delete path="lib/old_file.dart">DELETE</delete>
-
-Important guidelines:
-1. Maintain existing code style and patterns
-2. Keep imports and dependencies consistent
-3. Ensure code compiles and follows Flutter best practices
-4. Only modify what's necessary for the requested change
-5. Preserve existing functionality unless explicitly asked to change it
-6. When creating new files, follow Flutter/Dart naming conventions
-7. Ensure proper directory structure for new files
-        """
+        # Verify prompts are loaded
+        available_prompts = self.prompt_loader.list_available_prompts()
+        print(f"Available prompts: {available_prompts}")
+        
+        if 'determine_files' not in available_prompts:
+            raise Exception("Required prompt 'determine_files' not found")
+        if 'generate_code' not in available_prompts:
+            raise Exception("Required prompt 'generate_code' not found")
     
     def _load_project_structure(self):
         """Load and cache project structure"""
@@ -171,11 +136,14 @@ Important guidelines:
             
             # Determine which files need modification
             if request.target_files:
-                target_files = request.target_files
+                directly_modified_files = set(request.target_files)
+                all_relevant_files = set(request.target_files)
+                files_to_create = request.files_to_create or []
+                files_to_delete = request.files_to_delete or []
             else:
-                target_files = await self._determine_relevant_files(request, structure)
+                directly_modified_files, all_relevant_files, files_to_create, files_to_delete = await self._determine_relevant_files(request, structure)
                 
-            if not target_files and not request.files_to_create and not request.files_to_delete:
+            if not directly_modified_files and not files_to_create and not files_to_delete:
                 error_msg = "No files identified for modification"
                 
                 if MONITORING_AVAILABLE:
@@ -192,23 +160,30 @@ Important guidelines:
                     request_id=request.request_id
                 )
             
-            print(f"Target files for modification: {target_files}")
+            print(f"Target files for modification: {directly_modified_files}")
+            print(f"Files to create: {files_to_create}")
+            print(f"Files to delete: {files_to_delete}")
             
             if MONITORING_AVAILABLE:
-                logger.info(LogCategory.CODE_MOD, f"Identified {len(target_files)} files for modification", 
-                           context={"target_files": target_files, "request_id": request.request_id})
+                logger.info(LogCategory.CODE_MOD, f"Identified {len(directly_modified_files)} files for modification", 
+                           context={
+                               "directly_modified_files": list(directly_modified_files), 
+                               "files_to_create": files_to_create,
+                               "files_to_delete": files_to_delete,
+                               "request_id": request.request_id
+                           })
             
-            # Get current file contents
-            all_files = target_files + (request.files_to_create or [])
-            current_contents = self._get_file_contents(all_files)
+            # Get current file contents for all relevant files
+            all_files_list = list(all_relevant_files) + files_to_create
+            current_contents = self._get_file_contents(all_files_list)
             
             # Generate modified content
-            modifications, deletions = await self._generate_modifications(
-                request, structure, target_files, current_contents
+            modifications, deletions, shell_commands = await self._generate_modifications(
+                request, structure, directly_modified_files, files_to_create, files_to_delete, current_contents
             )
             
             # Apply modifications
-            result = await self._apply_modifications(modifications, deletions, request.request_id)
+            result = await self._apply_modifications(modifications, deletions, shell_commands, request.request_id)
             
             # Enhanced success logging
             duration = time.time() - start_time
@@ -256,25 +231,27 @@ Important guidelines:
         self, 
         request: ModificationRequest, 
         structure: ProjectStructure
-    ) -> List[str]:
+    ) -> Tuple[Set[str], Set[str], List[str], List[str]]:
         """
-        Use LLM to determine which files need modification
+        Use LLM to determine which files need modification, creation, or deletion
         
         Args:
             request: The modification request
             structure: Project structure
             
         Returns:
-            List of file paths to modify
+            Tuple of (directly_modified_files, all_relevant_files, files_to_create, files_to_delete)
         """
         if not self.llm_executor.is_available():
             # Fallback to simple analysis
-            return self.project_analyzer.suggest_files_for_modification(request.description)
+            suggested_files = self.project_analyzer.suggest_files_for_modification(request.description)
+            return set(suggested_files), set(suggested_files), [], []
         
         try:
             project_summary = self.project_analyzer.generate_project_summary()
             
-            prompt = self.determine_files_prompt.format(
+            prompt = self.prompt_loader.format_prompt(
+                'determine_files',
                 project_summary=json.dumps(project_summary, indent=2),
                 change_request=request.description
             )
@@ -285,30 +262,54 @@ Important guidelines:
             
             # Parse the JSON response
             try:
-                files = json.loads(response.text.strip())
-                if isinstance(files, list):
-                    # Filter to only existing files
-                    existing_files = []
-                    for file_path in files:
-                        full_path = self.project_path / file_path
-                        if full_path.exists():
-                            existing_files.append(file_path)
-                        else:
-                            print(f"Warning: File {file_path} does not exist")
+                result = json.loads(response.text.strip())
+                
+                if isinstance(result, dict):
+                    directly_modified = set(result.get("directly_modified_files", []))
+                    all_relevant = set(result.get("all_relevant_files", []))
+                    to_create = result.get("files_to_create", [])
+                    to_delete = result.get("files_to_delete", [])
                     
-                    return existing_files
+                    # Always add lib/app.dart if it exists
+                    app_dart_path = "lib/app.dart"
+                    if (self.project_path / app_dart_path).exists():
+                        directly_modified.add(app_dart_path)
+                        all_relevant.add(app_dart_path)
+                    
+                    # Always include pubspec.yaml
+                    pubspec_path = "pubspec.yaml"
+                    if (self.project_path / pubspec_path).exists():
+                        all_relevant.add(pubspec_path)
+                    
+                    # Filter out files that are in existing_changes if provided
+                    if request.existing_changes:
+                        directly_modified = {f for f in directly_modified 
+                                           if not any(f in ec or ec in f for ec in request.existing_changes)}
+                        all_relevant = {f for f in all_relevant 
+                                      if not any(f in ec or ec in f for ec in request.existing_changes)}
+                        to_create = [f for f in to_create 
+                                   if not any(f in ec or ec in f for ec in request.existing_changes)]
+                    
+                    return directly_modified, all_relevant, to_create, to_delete
+                    
+                elif isinstance(result, list):
+                    # Backward compatibility with old format
+                    files_set = set(result)
+                    return files_set, files_set, [], []
                 else:
                     print(f"Invalid response format: {response.text}")
-                    return []
+                    return set(), set(), [], []
+                    
             except json.JSONDecodeError as e:
                 print(f"Failed to parse LLM response as JSON: {e}")
                 print(f"Response was: {response.text}")
-                return []
+                return set(), set(), [], []
                 
         except Exception as e:
             print(f"Error determining relevant files: {e}")
             # Fallback to simple analysis
-            return self.project_analyzer.suggest_files_for_modification(request.description)
+            suggested_files = self.project_analyzer.suggest_files_for_modification(request.description)
+            return set(suggested_files), set(suggested_files), [], []
     
     def _get_file_contents(self, file_paths: List[str]) -> Dict[str, str]:
         """
@@ -340,72 +341,139 @@ Important guidelines:
         self,
         request: ModificationRequest,
         structure: ProjectStructure,
-        target_files: List[str],
+        directly_modified_files: Set[str],
+        files_to_create: List[str],
+        files_to_delete: List[str],
         current_contents: Dict[str, str]
-    ) -> Tuple[List[FileModification], List[str]]:
+    ) -> Tuple[List[FileModification], List[str], List[str]]:
         """
-        Generate modified content for target files
+        Generate modified content for target files with retry logic
         
         Args:
             request: The modification request
             structure: Project structure
-            target_files: List of files to modify
+            directly_modified_files: Set of files to modify
+            files_to_create: List of files to create
+            files_to_delete: List of files to delete
             current_contents: Current file contents
             
         Returns:
-            List of FileModification objects
+            Tuple of (modifications, deletions, shell_commands)
         """
         if not self.llm_executor.is_available():
             raise Exception("LLM executor not available for code generation")
         
         project_summary = self.project_analyzer.generate_project_summary()
         
-        # Format current contents for the prompt
-        contents_text = "\n\n".join([
-            f"=== {file_path} ===\n{content}"
-            for file_path, content in current_contents.items()
-        ])
+        modifications = []
+        deletions = files_to_delete.copy()
+        shell_commands = []
         
-        prompt = self.generate_code_prompt.format(
-            project_summary=json.dumps(project_summary, indent=2),
-            change_request=request.description,
-            current_contents=contents_text,
-            target_files=json.dumps(target_files),
-            files_to_create=json.dumps(request.files_to_create or []),
-            files_to_delete=json.dumps(request.files_to_delete or [])
-        )
+        # Combine files to work with
+        all_target_files = list(directly_modified_files) + files_to_create
+        remaining_files = set(all_target_files)
         
-        messages = [{"role": "user", "content": prompt}]
+        max_retries = request.max_retries
+        attempt = 0
         
-        response = self.llm_executor.execute(messages=messages)
-        
-        # Parse the response to extract file modifications
-        modifications, deletions = self._parse_modification_response(response.text, current_contents, request)
-        
-        return modifications, deletions
+        while remaining_files and attempt < max_retries:
+            attempt += 1
+            print(f"\nGeneration attempt {attempt}/{max_retries}")
+            print(f"Remaining files: {len(remaining_files)}")
+            
+            # Format current contents for the prompt
+            contents_text = "\n\n".join([
+                f"=== {file_path} ===\n{content}"
+                for file_path, content in current_contents.items()
+                if file_path in remaining_files or file_path in current_contents
+            ])
+            
+            prompt = self.prompt_loader.format_prompt(
+                'generate_code',
+                project_summary=json.dumps(project_summary, indent=2),
+                change_request=request.description,
+                current_contents=contents_text,
+                target_files=json.dumps(list(remaining_files)),
+                files_to_create=json.dumps([f for f in files_to_create if f in remaining_files]),
+                files_to_delete=json.dumps(files_to_delete)
+            )
+            
+            # Add images to content if provided
+            content = [{"type": "text", "text": prompt}]
+            if request.images:
+                for image in request.images:
+                    content.extend([
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": image["media_type"],
+                                "data": image["data"]
+                            }
+                        },
+                        {"type": "text", "text": "Use this image as a reference."}
+                    ])
+            
+            messages = [{"role": "user", "content": content}]
+            
+            try:
+                response = self.llm_executor.execute(messages=messages)
+                
+                # Parse the response to extract file modifications
+                batch_modifications, batch_deletions, batch_commands = self._parse_modification_response(
+                    response.text, current_contents, request, remaining_files
+                )
+                
+                # Add successful modifications
+                modifications.extend(batch_modifications)
+                deletions.extend(batch_deletions)
+                shell_commands.extend(batch_commands)
+                
+                # Remove successfully processed files
+                processed_files = {mod.file_path for mod in batch_modifications}
+                remaining_files -= processed_files
+                
+                print(f"Successfully processed {len(processed_files)} files")
+                
+                if not remaining_files:
+                    break
+                    
+            except Exception as e:
+                print(f"Error in attempt {attempt}: {str(e)}")
+                if attempt >= max_retries:
+                    print("Max retries reached, proceeding with partial results")
+                    break
+                    
+        return modifications, deletions, shell_commands
     
     def _parse_modification_response(
         self, 
         response_text: str, 
         current_contents: Dict[str, str],
-        request: ModificationRequest
-    ) -> Tuple[List[FileModification], List[str]]:
+        request: ModificationRequest,
+        target_files: Set[str] = None
+    ) -> Tuple[List[FileModification], List[str], List[str]]:
         """
-        Parse LLM response to extract file modifications and deletions
+        Parse LLM response to extract file modifications, deletions, and shell commands
         
         Args:
             response_text: The LLM response
             current_contents: Current file contents
             request: The modification request
+            target_files: Set of files we're expecting to process
             
         Returns:
-            Tuple of (modifications, deletions)
+            Tuple of (modifications, deletions, shell_commands)
         """
         modifications = []
         deletions = []
+        shell_commands = []
+        
+        # Handle NO_CHANGES_NEEDED response
+        if response_text.strip() == "NO_CHANGES_NEEDED":
+            return modifications, deletions, shell_commands
         
         # Parse response looking for <files path="..."> blocks
-        import re
         file_blocks = re.findall(
             r'<files path="([^"]+)">(.*?)</files>',
             response_text,
@@ -418,29 +486,46 @@ Important guidelines:
             response_text
         )
         
+        # Parse response looking for <shell> blocks
+        shell_blocks = re.findall(
+            r'<shell>(.*?)</shell>',
+            response_text,
+            re.DOTALL
+        )
+        
         deletions.extend(delete_blocks)
+        
+        # Process shell commands
+        for shell_block in shell_blocks:
+            commands = [cmd.strip() for cmd in shell_block.strip().split('\n') if cmd.strip()]
+            shell_commands.extend(commands)
         
         for file_path, content in file_blocks:
             # Clean up the content
-            cleaned_content = content.strip()
+            cleaned_content = self._clean_file_content(content)
             
-            # Remove any markdown code block markers
-            if cleaned_content.startswith('```'):
-                lines = cleaned_content.split('\n')
-                if lines[0].startswith('```'):
-                    lines = lines[1:]
-                if lines and lines[-1].strip() == '```':
-                    lines = lines[:-1]
-                cleaned_content = '\n'.join(lines)
+            # Handle NO_CHANGES_NEEDED for individual files
+            if cleaned_content.strip() == "NO_CHANGES_NEEDED":
+                continue
             
             original_content = current_contents.get(file_path, "")
+            is_new_file = not (self.project_path / file_path).exists() or original_content == ""
             
-            if cleaned_content != original_content:
+            # Determine operation type
+            operation = "create" if is_new_file else "modify"
+            
+            # Validate content completeness for Dart files
+            validation_passed = self._validate_file_content(file_path, cleaned_content)
+            
+            if cleaned_content != original_content or is_new_file:
                 modifications.append(FileModification(
                     file_path=file_path,
                     original_content=original_content,
                     modified_content=cleaned_content,
-                    change_description=f"Modified based on request"
+                    change_description=f"{operation.capitalize()}d based on request: {request.description[:50]}...",
+                    operation=operation,
+                    is_new_file=is_new_file,
+                    validation_passed=validation_passed
                 ))
         
         # Add any explicitly requested deletions that weren't in LLM response
@@ -449,12 +534,60 @@ Important guidelines:
                 if file_to_delete not in deletions:
                     deletions.append(file_to_delete)
         
-        return modifications, deletions
+        return modifications, deletions, shell_commands
+    
+    def _clean_file_content(self, content: str) -> str:
+        """
+        Clean the file content by removing markdown and continuation markers
+        """
+        content = content.strip()
+        
+        # Remove markdown code block markers
+        if content.startswith('```'):
+            lines = content.split('\n')
+            if lines[0].startswith('```'):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == '```':
+                lines = lines[:-1]
+            content = '\n'.join(lines)
+        
+        # Remove "continue with" lines from the last few lines
+        lines = content.splitlines()
+        if len(lines) >= 2:
+            start_index = max(0, len(lines) - 5)
+            for i in range(start_index, len(lines)):
+                if "continue with" in lines[i].lower():
+                    lines[i] = ""
+        
+        return '\n'.join(lines)
+    
+    def _validate_file_content(self, file_path: str, content: str) -> bool:
+        """
+        Validate file content for completeness and basic syntax
+        """
+        if not content.strip():
+            return False
+            
+        # For Dart files, check if content ends properly
+        if file_path.endswith('.dart'):
+            content = content.strip()
+            # Check if it ends with } or ;
+            if not (content.endswith('}') or content.endswith(';')):
+                return False
+                
+            # Check for balanced braces
+            open_braces = content.count('{')
+            close_braces = content.count('}')
+            if open_braces != close_braces:
+                return False
+                
+        return True
     
     async def _apply_modifications(
         self, 
         modifications: List[FileModification],
         deletions: List[str],
+        shell_commands: List[str],
         request_id: Optional[str] = None
     ) -> ModificationResult:
         """
@@ -548,6 +681,30 @@ Important guidelines:
                     request_id=request_id
                 )
             
+            # Execute shell commands after file operations
+            if shell_commands:
+                print(f"Executing {len(shell_commands)} shell commands...")
+                for cmd in shell_commands:
+                    try:
+                        result = subprocess.run(
+                            cmd, 
+                            shell=True, 
+                            cwd=self.project_path, 
+                            capture_output=True, 
+                            text=True,
+                            timeout=300  # 5 minute timeout
+                        )
+                        print(f"Command '{cmd}' executed successfully")
+                        if MONITORING_AVAILABLE:
+                            logger.info(LogCategory.FILE_OPS, f"Executed shell command: {cmd}",
+                                       context={"command": cmd, "return_code": result.returncode, "request_id": request_id})
+                    except subprocess.TimeoutExpired:
+                        warnings.append(f"Shell command timed out: {cmd}")
+                        print(f"Warning: Command '{cmd}' timed out")
+                    except Exception as e:
+                        warnings.append(f"Shell command failed: {cmd} - {str(e)}")
+                        print(f"Warning: Command '{cmd}' failed: {str(e)}")
+            
             # Create summary of changes
             summary_parts = []
             if modified_files:
@@ -556,6 +713,8 @@ Important guidelines:
                 summary_parts.append(f"Created {len(created_files)} files")
             if deleted_files:
                 summary_parts.append(f"Deleted {len(deleted_files)} files")
+            if shell_commands:
+                summary_parts.append(f"Executed {len(shell_commands)} commands")
             
             changes_summary = "; ".join(summary_parts) if summary_parts else "No changes made"
             

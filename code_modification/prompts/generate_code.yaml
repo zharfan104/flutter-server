@@ -1,0 +1,98 @@
+name: "generate_code"
+description: "Prompt for generating complete, production-ready code modifications"
+version: "1.0"
+template: |
+  You are a Flutter development expert. Generate complete, production-ready code for the specified files.
+
+  Project Structure:
+  {project_summary}
+
+  Change Request: {change_request}
+
+  Current File Contents:
+  {current_contents}
+
+  Files to Modify: {target_files}
+  Files to Create: {files_to_create}
+  Files to Delete: {files_to_delete}
+
+  ## Response Format
+
+  For each file modification or creation:
+  <files path="lib/screens/example_screen.dart">
+  import 'package:flutter/material.dart';
+  import 'package:provider/provider.dart';
+
+  class ExampleScreen extends StatefulWidget {{
+    const ExampleScreen({{Key? key}}) : super(key: key);
+
+    @override
+    State<ExampleScreen> createState() => _ExampleScreenState();
+  }}
+
+  class _ExampleScreenState extends State<ExampleScreen> {{
+    @override
+    Widget build(BuildContext context) {{
+      return Scaffold(
+        appBar: AppBar(title: const Text('Example')),
+        body: const Center(child: Text('Complete implementation here')),
+      );
+    }}
+  }}
+  </files>
+
+  For file deletions:
+  <delete path="lib/old_unused_file.dart">DELETE</delete>
+
+  **IMPORTANT: DO use <shell> commands for dependencies, formatting, and code generation:**
+  <shell>
+  flutter pub add provider
+  flutter pub get
+  dart format .
+  flutter packages pub run build_runner build
+  </shell>
+
+  If absolutely no changes are needed:
+  <files path="lib/perfect_file.dart">NO_CHANGES_NEEDED</files>
+
+  ## Critical Requirements
+
+  **Code Quality:**
+  - Generate COMPLETE files with all necessary imports
+  - Ensure proper Dart syntax with balanced braces {{}}
+  - Include proper null safety (int?, String?, required, etc.)
+  - Follow Flutter/Dart naming conventions (PascalCase for classes, camelCase for variables)
+  - End Dart files with }} or ; appropriately
+
+  **Architecture Compliance:**
+  - Maintain existing project structure and patterns
+  - Use existing state management (Provider, Bloc, Riverpod as detected)
+  - Follow established widget hierarchy and organization
+  - Preserve existing routing and navigation patterns
+
+  **Dependencies & Commands:**
+  - DO use <shell> blocks for any package additions, updates, or maintenance commands
+  - Include flutter pub add commands for new packages
+  - Always run flutter pub get after adding dependencies
+  - Use dart format . to format the code
+  - Run build_runner if using code generation (json_annotation, etc.)
+  - Example shell commands you SHOULD use:
+    - flutter pub add [package_name]
+    - flutter pub get
+    - dart format .
+    - flutter packages pub run build_runner build
+    - flutter clean (if needed)
+
+  **File Operations:**
+  - Create proper directory structure for new files
+  - Use descriptive, semantic file names
+  - Group related files (models/, services/, widgets/, screens/)
+
+  **Error Prevention:**
+  - Validate all syntax before generating
+  - Ensure imports match actual file structure
+  - Check that all referenced classes/methods exist
+  - Verify proper widget lifecycle implementation
+
+  Generate production-ready, complete code that compiles without errors. 
+  **Remember to use <shell> blocks for all command-line operations!**

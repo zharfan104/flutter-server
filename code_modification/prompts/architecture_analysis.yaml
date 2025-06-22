@@ -1,0 +1,135 @@
+name: "architecture_analysis"
+description: "Prompt for analyzing and improving Flutter application architecture"
+version: "1.0"
+template: |
+  You are a Flutter architecture expert. Analyze the current application architecture and provide recommendations for improvements.
+
+  Project Structure:
+  {project_summary}
+
+  Analysis Request: {analysis_request}
+
+  Current Codebase: {codebase_overview}
+
+  Specific Areas of Concern: {focus_areas}
+
+  ## Architecture Analysis
+
+  Analyze the following architectural aspects:
+
+  **State Management:**
+  - Current state management approach (Provider, BLoC, Riverpod, setState)
+  - State organization and data flow
+  - State persistence and restoration
+  - Performance implications
+
+  **Code Organization:**
+  - Folder structure and file organization
+  - Separation of concerns
+  - Dependency management
+  - Module boundaries
+
+  **Design Patterns:**
+  - Repository pattern implementation
+  - Service layer architecture
+  - Dependency injection usage
+  - MVVM/MVP/MVC patterns
+
+  **Data Layer:**
+  - API integration patterns
+  - Local storage strategy
+  - Caching mechanisms
+  - Offline capability
+
+  ## Response Format
+
+  ```json
+  {
+    "overall_assessment": {
+      "architecture_score": 75,
+      "maintainability": "good",
+      "scalability": "fair",
+      "testability": "excellent",
+      "performance": "good"
+    },
+    "strengths": [
+      "Well-organized folder structure",
+      "Consistent state management pattern",
+      "Good separation of UI and business logic"
+    ],
+    "weaknesses": [
+      "Tight coupling between services",
+      "Inconsistent error handling",
+      "Limited offline support"
+    ],
+    "recommendations": [
+      {
+        "category": "state_management",
+        "priority": "high",
+        "description": "Migrate from Provider to Riverpod for better performance",
+        "implementation_steps": [
+          "Add riverpod dependencies",
+          "Create provider definitions",
+          "Migrate widgets to ConsumerWidget",
+          "Update state access patterns"
+        ],
+        "estimated_effort": "medium",
+        "benefits": ["Better performance", "Improved testability", "Type safety"]
+      }
+    ],
+    "implementation_plan": {
+      "phase_1": {
+        "duration": "1-2 weeks",
+        "tasks": ["Refactor state management", "Improve error handling"],
+        "priority": "high"
+      },
+      "phase_2": {
+        "duration": "2-3 weeks", 
+        "tasks": ["Add offline support", "Optimize performance"],
+        "priority": "medium"
+      }
+    },
+    "technical_debt": [
+      {
+        "location": "lib/services/api_service.dart",
+        "issue": "Monolithic service class",
+        "impact": "medium",
+        "effort_to_fix": "low"
+      }
+    ]
+  }
+  ```
+
+  ## Analysis Categories
+
+  **Architectural Patterns:**
+  - Clean Architecture compliance
+  - SOLID principles adherence
+  - Design pattern usage
+  - Architectural boundaries
+
+  **Code Quality:**
+  - Cyclomatic complexity
+  - Code duplication
+  - Naming conventions
+  - Documentation quality
+
+  **Performance:**
+  - Widget rebuild optimization
+  - Memory usage patterns
+  - Lazy loading implementation
+  - Asset optimization
+
+  **Maintainability:**
+  - Code organization
+  - Dependency management
+  - Testing strategy
+  - CI/CD integration
+
+  **Scalability:**
+  - Feature modularity
+  - Team collaboration support
+  - Deployment flexibility
+  - Technology upgrade path
+
+  Provide actionable recommendations with clear implementation steps and prioritization based on impact and effort required.

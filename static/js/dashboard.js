@@ -142,7 +142,7 @@ class DashboardManager {
         // For now, we'll simulate with periodic updates
         setInterval(() => {
             this.updateFileCount();
-        }, 30000); // Update every 30 seconds
+        }, 300000); // Update every 5 minutes (less frequent)
     }
     
     /**
@@ -159,8 +159,7 @@ class DashboardManager {
      * Update dashboard statistics
      */
     updateStatistics() {
-        // Update various dashboard elements
-        this.updateFileCount();
+        // Update various dashboard elements (file count updated separately by monitoring)
         this.updateGitStatus();
         this.updateBuildInfo();
     }
