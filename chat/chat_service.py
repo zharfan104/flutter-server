@@ -168,12 +168,25 @@ class ChatService:
         chat_response.requires_code_modification = True
         chat_response.code_modification_request_id = request_id
         
-        # Start background code modification
-        asyncio.create_task(self._execute_code_modification_background(
-            message=request.message,
-            conversation_id=chat_response.conversation_id,
-            request_id=request_id
-        ))
+        # Start background code modification in a separate thread
+        import threading
+        
+        def run_background_modification():
+            # Create a new event loop for this thread
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(self._execute_code_modification_background(
+                    message=request.message,
+                    conversation_id=chat_response.conversation_id,
+                    request_id=request_id
+                ))
+            finally:
+                loop.close()
+        
+        background_thread = threading.Thread(target=run_background_modification, daemon=True)
+        background_thread.start()
         
         # Track active modification
         self.active_code_modifications[request_id] = {

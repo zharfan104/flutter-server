@@ -409,10 +409,15 @@ class ChatManager {
                     this.showProcessingIndicator('🔧 Working on code changes...');
                     console.log('🔧 Code modification started:', data.code_modification_request_id);
                     
-                    // Set timeout for code modification to show completion message
-                    setTimeout(() => {
+                    // Start conditional polling to detect completion
+                    this.startConditionalPolling();
+                    
+                    // Set fallback timeout for code modification (much longer)
+                    this.currentRequestTimeout = setTimeout(() => {
+                        console.log('⏰ Code modification timeout reached, stopping polling');
                         this.hideProcessingIndicator();
-                    }, 30000); // Hide after 30 seconds
+                        this.stopConditionalPolling();
+                    }, 300000); // 5 minutes fallback timeout
                 } else {
                     // For questions and follow-ups, no additional processing needed
                     console.log('💬 Conversation response completed');
@@ -504,8 +509,8 @@ class ChatManager {
     }
     
     startPolling() {
-        // Disabled auto-polling - chat updates are now immediate via new modular system
-        console.log('Chat polling disabled - using immediate response system');
+        // Default polling disabled - use startConditionalPolling instead
+        console.log('Default polling disabled - use conditional polling for background operations');
         return;
         
         if (this.isPolling) return;
@@ -514,6 +519,31 @@ class ChatManager {
         this.pollInterval = setInterval(() => {
             this.checkForNewMessages();
         }, 2000); // Poll every 2 seconds
+    }
+    
+    startConditionalPolling() {
+        // Start polling only for background code modifications
+        if (this.isPolling) {
+            console.log('🔄 Polling already active, skipping start');
+            return;
+        }
+        
+        console.log('🔄 Starting conditional polling for background operations');
+        this.isPolling = true;
+        this.pollInterval = setInterval(() => {
+            console.log('📡 Polling for new messages...');
+            this.checkForNewMessages();
+        }, 3000); // Poll every 3 seconds for background updates
+    }
+    
+    stopConditionalPolling() {
+        // Stop polling when background operations complete
+        if (this.pollInterval) {
+            clearInterval(this.pollInterval);
+            this.pollInterval = null;
+            this.isPolling = false;
+            console.log('✅ Stopped conditional polling - background operations complete');
+        }
     }
     
     stopPolling() {
@@ -563,21 +593,39 @@ class ChatManager {
                     this.lastMessageCount = currentCount;
                     console.log('📊 Updated lastMessageCount to:', this.lastMessageCount);
                     
-                    // Check if the last message is from assistant - if so, hide loading indicators
+                    // Check if the last message is from assistant - if so, check for completion
                     const lastMessage = newMessages[newMessages.length - 1];
                     if (lastMessage && lastMessage.role === 'assistant') {
-                        console.log('✅ Assistant response received, hiding processing indicator');
-                        this.hideProcessingIndicator();
+                        console.log('✅ Assistant response received');
                         
-                        // Clear the fallback timeout since we got a response
-                        if (this.currentRequestTimeout) {
-                            clearTimeout(this.currentRequestTimeout);
-                            this.currentRequestTimeout = null;
-                        }
+                        // Check if the message indicates code changes completion
+                        console.log('🔍 Checking message for completion indicators:', lastMessage.content.substring(0, 100));
                         
-                        // Check if the message indicates code changes were made
                         if (this.messageIndicatesCodeChanges(lastMessage.content)) {
+                            console.log('🎉 Code modification completed, stopping polling and triggering reload');
+                            this.hideProcessingIndicator();
+                            this.stopConditionalPolling();
                             this.triggerFlutterReload();
+                            
+                            // Clear any fallback timeouts
+                            if (this.currentRequestTimeout) {
+                                console.log('✅ Clearing fallback timeout');
+                                clearTimeout(this.currentRequestTimeout);
+                                this.currentRequestTimeout = null;
+                            }
+                        } else if (this.messageIndicatesError(lastMessage.content)) {
+                            console.log('❌ Code modification failed, stopping polling');
+                            this.hideProcessingIndicator();
+                            this.stopConditionalPolling();
+                            
+                            // Clear any fallback timeouts
+                            if (this.currentRequestTimeout) {
+                                console.log('✅ Clearing fallback timeout after error');
+                                clearTimeout(this.currentRequestTimeout);
+                                this.currentRequestTimeout = null;
+                            }
+                        } else {
+                            console.log('⏳ Message does not indicate completion, continuing to poll...');
                         }
                     }
                     
@@ -603,8 +651,9 @@ class ChatManager {
     }
     
     messageIndicatesCodeChanges(content) {
-        // Check if the assistant message indicates that code was modified
+        // Check if the assistant message indicates that code was modified successfully
         const codeChangeIndicators = [
+            '🎉 Code modification completed',
             '🎉 I\'ve successfully implemented',
             'Changes Made:',
             'Modified Files:',
@@ -621,10 +670,42 @@ class ChatManager {
             'files have been',
             'implementation complete',
             'changes applied',
-            'Flutter project updated'
+            'Flutter project updated',
+            'hot reload triggered - changes are live',
+            '🔄 Hot reload'
         ];
         
-        return codeChangeIndicators.some(indicator => content.toLowerCase().includes(indicator.toLowerCase()));
+        console.log('🔍 Checking completion indicators against:', content.substring(0, 200));
+        console.log('🔍 Available indicators:', codeChangeIndicators);
+        
+        const found = codeChangeIndicators.some(indicator => {
+            const match = content.toLowerCase().includes(indicator.toLowerCase());
+            if (match) {
+                console.log('✅ Found completion indicator:', indicator);
+            }
+            return match;
+        });
+        
+        console.log('🔍 Completion check result:', found);
+        return found;
+    }
+    
+    messageIndicatesError(content) {
+        // Check if the assistant message indicates that code modification failed
+        const errorIndicators = [
+            '❌ Code modification failed',
+            '❌ Code modification encountered issues',
+            'modification encountered issues',
+            'code modification failed',
+            'failed to modify',
+            'failed to create',
+            'failed to update',
+            'error occurred',
+            'compilation failed',
+            'build failed'
+        ];
+        
+        return errorIndicators.some(indicator => content.toLowerCase().includes(indicator.toLowerCase()));
     }
     
     triggerFlutterReload() {
