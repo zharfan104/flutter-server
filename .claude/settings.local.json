@@ -25,7 +25,10 @@
       "Bash(sed:*)",
       "Bash(python:*)",
       "Bash(find:*)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(mv:*)",
+      "Bash(pip install:*)",
+      "Bash(poetry show:*)"
     ],
     "deny": []
   }

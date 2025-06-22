@@ -1,4 +1,4 @@
-name: "Analyze Flutter Compilation Errors for Relace Fixes"
+name: "Analyze Flutter Compilation Errors"
 description: "Lightweight analysis of Flutter compilation errors to identify specific fixes needed"
 version: "2.0"
 category: "error_recovery"

@@ -375,18 +375,34 @@ class CodeModificationService:
                 if file_path in remaining_files or file_path in current_contents
             ])
             
-            prompt = self.prompt_loader.format_prompt(
-                'generate_code',
-                project_summary=json.dumps(project_summary, indent=2),
-                change_request=request.description,
-                current_contents=contents_text,
-                target_files=json.dumps(list(remaining_files)),
-                files_to_create=json.dumps([f for f in files_to_create if f in remaining_files]),
-                files_to_delete=json.dumps(files_to_delete)
-            )
+            # Get system and user prompts separately (v2.0 structure)
+            try:
+                system_prompt, user_prompt = self.prompt_loader.get_system_user_prompts(
+                    'generate_code',
+                    project_summary=json.dumps(project_summary, indent=2),
+                    change_request=request.description,
+                    current_contents=contents_text,
+                    target_files=json.dumps(list(remaining_files)),
+                    files_to_create=json.dumps([f for f in files_to_create if f in remaining_files]),
+                    files_to_delete=json.dumps(files_to_delete)
+                )
+                use_system_prompt = True
+            except KeyError:
+                # Fallback to legacy format if system/user prompts not available
+                user_prompt = self.prompt_loader.format_prompt(
+                    'generate_code',
+                    project_summary=json.dumps(project_summary, indent=2),
+                    change_request=request.description,
+                    current_contents=contents_text,
+                    target_files=json.dumps(list(remaining_files)),
+                    files_to_create=json.dumps([f for f in files_to_create if f in remaining_files]),
+                    files_to_delete=json.dumps(files_to_delete)
+                )
+                system_prompt = ""
+                use_system_prompt = False
             
             # Add images to content if provided
-            content = [{"type": "text", "text": prompt}]
+            content = [{"type": "text", "text": user_prompt}]
             if request.images:
                 for image in request.images:
                     content.extend([
@@ -401,10 +417,21 @@ class CodeModificationService:
                         {"type": "text", "text": "Use this image as a reference."}
                     ])
             
-            messages = [{"role": "user", "content": content}]
+            # Construct messages with proper system/user structure
+            if use_system_prompt and system_prompt:
+                messages = [{"role": "user", "content": content}]
+                system_prompt_for_llm = system_prompt
+            else:
+                messages = [{"role": "user", "content": content}]
+                system_prompt_for_llm = None
             
             try:
-                response = self.llm_executor.execute(messages=messages)
+                response = self.llm_executor.execute(
+                    messages=messages,
+                    system_prompt=system_prompt_for_llm,
+                    user_id=request.user_id,
+                    session_id=request.request_id
+                )
                 
                 # Parse the response to extract file modifications
                 batch_modifications, batch_deletions, batch_commands = self._parse_modification_response(
@@ -442,6 +469,7 @@ class CodeModificationService:
     ) -> Tuple[List[FileModification], List[str], List[str]]:
         """
         Parse LLM response to extract file modifications, deletions, and shell commands
+        Supports both new JSON format (v2.0) and legacy XML-style format
         
         Args:
             response_text: The LLM response
@@ -459,6 +487,107 @@ class CodeModificationService:
         # Handle NO_CHANGES_NEEDED response
         if response_text.strip() == "NO_CHANGES_NEEDED":
             return modifications, deletions, shell_commands
+        
+        # Try to parse as JSON first (v2.0 format)
+        try:
+            json_response = self._parse_json_response(response_text)
+            if json_response:
+                return self._parse_json_format(json_response, current_contents, request, target_files)
+        except Exception as e:
+            print(f"JSON parsing failed, falling back to legacy format: {e}")
+        
+        # Fall back to legacy XML-style parsing
+        return self._parse_legacy_format(response_text, current_contents, request, target_files)
+    
+    def _parse_json_response(self, response_text: str) -> Optional[Dict]:
+        """Extract JSON from response text, handling markdown code blocks"""
+        import json
+        
+        # Try to find JSON in markdown code blocks first
+        json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group(1))
+            except json.JSONDecodeError:
+                pass
+        
+        # Try to find JSON directly in response
+        json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group(0))
+            except json.JSONDecodeError:
+                pass
+        
+        return None
+    
+    def _parse_json_format(
+        self, 
+        json_response: Dict, 
+        current_contents: Dict[str, str],
+        request: ModificationRequest,
+        target_files: Set[str] = None
+    ) -> Tuple[List[FileModification], List[str], List[str]]:
+        """Parse the new JSON format response"""
+        modifications = []
+        deletions = []
+        shell_commands = []
+        
+        # Extract shell commands
+        if 'shell_commands' in json_response:
+            shell_commands.extend(json_response['shell_commands'])
+        
+        # Extract file operations
+        if 'file_operations' in json_response:
+            for file_op in json_response['file_operations']:
+                operation = file_op.get('operation', 'modify')
+                file_path = file_op.get('path', '')
+                content = file_op.get('content', '')
+                
+                if operation == 'delete':
+                    deletions.append(file_path)
+                    continue
+                
+                if not file_path or not content:
+                    continue
+                
+                # Clean up the content
+                cleaned_content = self._clean_file_content(content)
+                
+                # Handle NO_CHANGES_NEEDED for individual files
+                if cleaned_content.strip() == "NO_CHANGES_NEEDED":
+                    continue
+                
+                original_content = current_contents.get(file_path, "")
+                is_new_file = not (self.project_path / file_path).exists() or original_content == ""
+                
+                # Validate content completeness for Dart files
+                validation_passed = self._validate_file_content(file_path, cleaned_content)
+                
+                if cleaned_content != original_content or is_new_file:
+                    modifications.append(FileModification(
+                        file_path=file_path,
+                        original_content=original_content,
+                        modified_content=cleaned_content,
+                        change_description=f"{operation.capitalize()}d based on request: {request.description[:50]}...",
+                        operation=operation,
+                        is_new_file=is_new_file,
+                        validation_passed=validation_passed
+                    ))
+        
+        return modifications, deletions, shell_commands
+    
+    def _parse_legacy_format(
+        self, 
+        response_text: str, 
+        current_contents: Dict[str, str],
+        request: ModificationRequest,
+        target_files: Set[str] = None
+    ) -> Tuple[List[FileModification], List[str], List[str]]:
+        """Parse the legacy XML-style format"""
+        modifications = []
+        deletions = []
+        shell_commands = []
         
         # Parse response looking for <files path="..."> blocks
         file_blocks = re.findall(

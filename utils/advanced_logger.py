@@ -40,6 +40,7 @@ class LogCategory(Enum):
     SYSTEM = "system"
     FLUTTER = "flutter"
     CHAT = "chat"
+    SHELL_CMD = "shell_command"
 
 
 @dataclass
@@ -259,6 +260,12 @@ class AdvancedLogger:
         if not self._should_log(level):
             return
         
+        # Ensure level and category are proper enums
+        if not isinstance(level, LogLevel):
+            raise ValueError(f"Invalid log level: {level}")
+        if not isinstance(category, LogCategory):
+            raise ValueError(f"Invalid log category: {category}")
+        
         entry = self._create_log_entry(
             level=level,
             category=category,
@@ -280,7 +287,11 @@ class AdvancedLogger:
             # Update statistics
             self.stats["total_logs"] += 1
             self.stats["logs_by_level"][level.value] += 1
-            self.stats["logs_by_category"][category.value] += 1
+            # Ensure category is enum and use its value safely
+            category_key = category.value if hasattr(category, 'value') else str(category)
+            if category_key not in self.stats["logs_by_category"]:
+                self.stats["logs_by_category"][category_key] = 0
+            self.stats["logs_by_category"][category_key] += 1
             
             if level == LogLevel.ERROR:
                 self.stats["errors_count"] += 1
