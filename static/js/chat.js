@@ -262,12 +262,21 @@ class ChatManager {
         welcomeMessage.style.display = 'none';
         
         // Check for duplicates - avoid adding the same message twice
-        // Use a simpler hash for better deduplication
-        const contentHash = message.content.length + '-' + message.content.substring(0, 20).replace(/[^a-zA-Z0-9]/g, '');
-        const messageIdentifier = message.message_id || `${message.role}-${contentHash}`;
-        const existingMessage = container.querySelector(`[data-message-id="${messageIdentifier}"]`);
-        if (existingMessage) {
-            console.log('🔄 Skipping duplicate message:', messageIdentifier, message.content.substring(0, 30));
+        // Create consistent identifier regardless of whether message has backend ID
+        const contentHash = message.content.length + '-' + message.content.substring(0, 30).replace(/[^a-zA-Z0-9]/g, '');
+        const timeHash = message.formatted_time ? message.formatted_time.replace(/[^0-9]/g, '') : '';
+        const consistentId = `${message.role}-${contentHash}-${timeHash}`;
+        
+        // Check multiple ways to avoid duplicates
+        const existingByConsistentId = container.querySelector(`[data-message-consistent-id="${consistentId}"]`);
+        const existingByBackendId = message.message_id ? container.querySelector(`[data-message-id="${message.message_id}"]`) : null;
+        
+        if (existingByConsistentId || existingByBackendId) {
+            console.log('🔄 Skipping duplicate message:', {
+                consistentId,
+                backendId: message.message_id,
+                content: message.content.substring(0, 30)
+            });
             return;
         }
         
@@ -275,7 +284,10 @@ class ChatManager {
         
         const messageDiv = document.createElement('div');
         messageDiv.className = 'message-bubble-container mb-3';
-        messageDiv.setAttribute('data-message-id', messageIdentifier);
+        messageDiv.setAttribute('data-message-consistent-id', consistentId);
+        if (message.message_id) {
+            messageDiv.setAttribute('data-message-id', message.message_id);
+        }
         
         const isUser = message.role === 'user';
         const isSystem = message.role === 'system';
@@ -366,9 +378,9 @@ class ChatManager {
         };
         this.addMessageToUI(userMessage);
         
-        // Don't immediately increment lastMessageCount - let polling handle it
-        // This prevents sync issues between frontend and backend
-        console.log('📊 User message added to UI, current lastMessageCount:', this.lastMessageCount);
+        // Increment lastMessageCount to prevent polling from thinking this is a new message
+        this.lastMessageCount++;
+        console.log('📊 User message added to UI, updated lastMessageCount:', this.lastMessageCount);
         
         // Don't show processing indicator yet - wait for response to determine if needed
         
@@ -403,6 +415,10 @@ class ChatManager {
                     intent: data.intent
                 };
                 this.addMessageToUI(aiMessage);
+                
+                // Increment lastMessageCount for AI response too
+                this.lastMessageCount++;
+                console.log('📊 AI response added to UI, updated lastMessageCount:', this.lastMessageCount);
                 
                 // Show appropriate indicator based on intent
                 if (data.requires_code_modification) {
@@ -574,20 +590,10 @@ class ChatManager {
                     const newMessages = currentMessages.slice(this.lastMessageCount);
                     console.log('📥 Processing', newMessages.length, 'new messages');
                     
-                    // Filter out any messages that might already be in the UI to prevent duplicates
-                    const container = document.getElementById('messages-container');
-                    const existingMessageIds = new Set();
-                    container.querySelectorAll('[data-message-id]').forEach(el => {
-                        existingMessageIds.add(el.getAttribute('data-message-id'));
-                    });
-                    
+                    // Add new messages (addMessageToUI handles duplicate detection)
                     newMessages.forEach(message => {
-                        const messageId = message.message_id || `${message.role}-${message.content.length}-${message.content.substring(0, 20).replace(/[^a-zA-Z0-9]/g, '')}`;
-                        if (!existingMessageIds.has(messageId)) {
-                            this.addMessageToUI(message);
-                        } else {
-                            console.log('🔄 Skipping duplicate message in polling:', messageId);
-                        }
+                        console.log('📥 Adding new message from polling:', message.role, message.content.substring(0, 30));
+                        this.addMessageToUI(message);
                     });
                     
                     this.lastMessageCount = currentCount;
