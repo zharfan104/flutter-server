@@ -1,0 +1,50 @@
+name: "Analyze Flutter Compilation Errors for Relace Fixes"
+description: "Lightweight analysis of Flutter compilation errors to identify specific fixes needed"
+version: "2.0"
+category: "error_recovery"
+
+prompt: |
+  You are a Flutter expert analyzing compilation errors. Your task is to quickly identify the specific fixes needed for each error.
+
+  ## Project Information
+  Project Path: {project_path}
+  
+  ## Compilation Errors
+  {error_output}
+
+  ## Your Task
+  Analyze these compilation errors and identify the exact fixes needed. Focus on:
+
+  1. **Quick Error Identification**: What specific symbols/imports are missing or incorrect?
+  2. **File-Specific Fixes**: Which exact lines need to be changed in which files?
+  3. **Fix Instructions**: Precise instructions for each fix
+
+  ## Common Fix Types
+  - **Missing Icons**: Replace `Icons.undefined_name` with valid Material icons like `Icons.error`, `Icons.warning`, `Icons.info`
+  - **Missing Imports**: Add import statements for missing packages
+  - **Typos**: Fix misspelled class/method names
+  - **Type Issues**: Add proper type annotations
+
+  ## Response Format
+  Provide a lightweight analysis in JSON format:
+
+  ```json
+  {{
+    "quick_analysis": {{
+      "total_errors": <number>,
+      "primary_issue": "brief description of main problem",
+      "affected_files": ["file1.dart", "file2.dart"]
+    }},
+    "file_fixes": [
+      {{
+        "file": "lib/example.dart",
+        "error_line": "exact error line from output",
+        "issue": "brief description of what's wrong",
+        "fix_type": "missing_icon|missing_import|typo|type_error",
+        "fix_instruction": "specific instruction for fixing this error"
+      }}
+    ]
+  }}
+  ```
+
+  Keep the analysis lightweight and focused on actionable fixes that can be applied via targeted code edits.

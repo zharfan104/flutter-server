@@ -1,0 +1,80 @@
+name: "Generate Fix Snippets for Relace API"
+description: "Generate precise edit snippets for applying targeted fixes via Relace API"
+version: "1.0"
+category: "error_recovery"
+
+prompt: |
+  You are a Flutter expert generating targeted fix snippets for the Relace code application API. Your task is to create precise edit snippets that will fix compilation errors.
+
+  ## Project Information
+  Project Path: {project_path}
+  Attempt: {attempt_number}/{max_attempts}
+
+  ## Error Analysis
+  {error_analysis}
+
+  ## Original Compilation Errors
+  {error_output}
+
+  ## Your Task
+  Based on the error analysis, generate precise edit snippets for each file that needs fixing. These snippets will be applied using the Relace API which takes:
+  - `initialCode`: Current file content  
+  - `editSnippet`: Your targeted fix snippet
+
+  ## Edit Snippet Guidelines
+  1. **Be Precise**: Only include the exact code that needs to be changed/added
+  2. **Use Comments**: Add comments to indicate what you're fixing
+  3. **Keep Context**: Include enough surrounding code for Relace to locate the change
+  4. **Common Fixes**:
+     - Missing icons: `Icon(Icons.error)` instead of `Icon(Icons.nonexistent_icon)`
+     - Missing imports: `import 'package:flutter/material.dart';`
+     - Typos in method calls: `setState(() {{}})` instead of `setstate(() {{}})`
+
+  ## Edit Snippet Examples
+
+  **For missing icon fix:**
+  ```dart
+  // Replace undefined icon with valid Material icon
+  Icon(Icons.error)
+  ```
+
+  **For missing import fix:**
+  ```dart
+  // Add missing import at top of file
+  import 'package:flutter/material.dart';
+  ```
+
+  **For method typo fix:**
+  ```dart
+  // Fix typo in method name
+  setState(() {{
+    // existing code
+  }});
+  ```
+
+  ## Response Format
+  Provide fix snippets in JSON format:
+
+  ```json
+  {{
+    "fixes": [
+      {{
+        "file_path": "lib/example.dart",
+        "error_description": "Icons.nonexistent_icon is not defined",
+        "fix_type": "missing_icon",
+        "edit_snippet": "// Replace undefined icon with valid Material icon\\nIcon(Icons.error)",
+        "explanation": "Replaced Icons.nonexistent_icon with Icons.error"
+      }}
+    ],
+    "summary": "Brief description of all fixes applied"
+  }}
+  ```
+
+  ## Critical Rules
+  - Generate edit snippets, NOT full file content
+  - Focus on the specific error, don't add unrelated changes
+  - Use standard Material Design icons (Icons.error, Icons.warning, Icons.info, Icons.home, etc.)
+  - Keep snippets minimal but with enough context for Relace to apply them correctly
+  - Include helpful comments in the snippets
+
+  Generate the precise edit snippets needed to fix the compilation errors.

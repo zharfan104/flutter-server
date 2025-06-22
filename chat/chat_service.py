@@ -292,7 +292,33 @@ class ChatService:
                     result_message += f"**Deleted Files:** {', '.join(mod_result.deleted_files)}\n"
                 
                 if self.flutter_manager and self.flutter_manager.is_running:
-                    result_message += "\n🔄 Hot reload triggered - changes are live!"
+                    # Set up recovery chat context
+                    if self.chat_manager:
+                        self.flutter_manager.set_recovery_chat_context(self.chat_manager, conversation_id)
+                    
+                    # Trigger hot reload with error recovery
+                    hot_reload_result = self.flutter_manager.hot_reload(with_error_recovery=True, max_retries=3)
+                    
+                    if hot_reload_result.get("success"):
+                        if hot_reload_result.get("status") == "error_recovery_success":
+                            result_message += f"\n🔄 Hot reload succeeded after error recovery ({hot_reload_result.get('attempts', 1)} attempts)"
+                            result_message += f"\n🤖 AI fixed: {hot_reload_result.get('fix_applied', 'compilation errors')}"
+                        else:
+                            result_message += "\n🔄 Hot reload triggered - changes are live!"
+                    else:
+                        if hot_reload_result.get("status") == "error_recovery_failed":
+                            result_message += f"\n❌ Hot reload failed after {hot_reload_result.get('attempts', 3)} error recovery attempts"
+                            result_message += f"\n🔧 Manual intervention may be required"
+                            
+                            # Send additional error recovery message
+                            if self.chat_manager:
+                                error_recovery_message = f"⚠️ **Error Recovery Failed**\n\n"
+                                error_recovery_message += f"Despite {hot_reload_result.get('attempts', 3)} AI recovery attempts, compilation errors persist:\n\n"
+                                error_recovery_message += f"```\n{hot_reload_result.get('final_error', 'Unknown error')}\n```\n\n"
+                                error_recovery_message += "Please review the errors and ask me to fix specific issues."
+                                self.chat_manager.add_message(conversation_id, 'assistant', error_recovery_message)
+                        else:
+                            result_message += f"\n❌ Hot reload failed: {hot_reload_result.get('error', 'Unknown error')}"
                 else:
                     result_message += "\nℹ️ Start your Flutter server to see the changes."
                 

@@ -24,7 +24,8 @@
       "Bash(rm:*)",
       "Bash(sed:*)",
       "Bash(python:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": []
   }

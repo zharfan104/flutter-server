@@ -178,27 +178,224 @@ class FlutterManager:
                 time.sleep(0.1)
     
     
-    def hot_reload(self):
-        """Trigger hot reload using Flutter's built-in hot reload"""
+    def hot_reload(self, with_error_recovery=True, max_retries=3):
+        """Trigger hot reload using Flutter's built-in hot reload with optional error recovery"""
         if not self.flutter_process or not self.is_running:
             return {"error": "Flutter not running"}
         
         try:
             print("Triggering Flutter hot reload...")
             
+            # Clear recent output buffer to capture fresh reload output
+            initial_buffer_length = len(self.output_buffer)
+            
             # Send 'r' command to Flutter dev server for hot reload
             self.flutter_process.stdin.write('r\n')
             self.flutter_process.stdin.flush()
             
             print("✓ Hot reload command sent")
-            return {
-                "status": "hot_reloaded",
-                "success": True,
-                "message": "Hot reload triggered successfully"
-            }
             
+            # Wait for reload result if error recovery is enabled
+            if with_error_recovery:
+                reload_result = self._wait_for_reload_result(initial_buffer_length, max_retries)
+                return reload_result
+            else:
+                return {
+                    "status": "hot_reloaded",
+                    "success": True,
+                    "message": "Hot reload triggered successfully"
+                }
+        
         except Exception as e:
-            return {"error": f"Failed to trigger hot reload: {str(e)}"}
+            print(f"Error during hot reload: {e}")
+            return {"error": f"Hot reload failed: {str(e)}"}
+    
+    def _wait_for_reload_result(self, initial_buffer_length, max_retries):
+        """Wait for hot reload result and trigger error recovery if needed"""
+        import time
+        import asyncio
+        
+        # Wait for Flutter to process the reload
+        time.sleep(3)
+        
+        # Get new output since reload was triggered
+        new_output = self.output_buffer[initial_buffer_length:]
+        reload_output = '\n'.join(new_output)
+        
+        print(f"Hot reload output: {reload_output}")
+        
+        # Check for compilation errors
+        error_patterns = [
+            "Error:",
+            "error:",
+            "Try again after fixing",
+            "failed to compile",
+            "compilation failed",
+            "Member not found:",
+            "The method",
+            "The getter",
+            "The setter"
+        ]
+        
+        # Check for success patterns that indicate successful compilation
+        success_patterns = [
+            "Restarted application in",
+            "Hot reload completed",
+            "Recompile complete",
+            "Application finished"
+        ]
+        
+        has_errors = any(pattern in reload_output for pattern in error_patterns)
+        has_success = any(pattern in reload_output for pattern in success_patterns)
+        
+        # If we have both errors and success, check which came last
+        if has_errors and has_success:
+            # Find the last occurrence of each type
+            last_error_pos = -1
+            last_success_pos = -1
+            
+            for pattern in error_patterns:
+                pos = reload_output.rfind(pattern)
+                if pos > last_error_pos:
+                    last_error_pos = pos
+            
+            for pattern in success_patterns:
+                pos = reload_output.rfind(pattern)
+                if pos > last_success_pos:
+                    last_success_pos = pos
+            
+            # Only treat as error if the last error came after the last success
+            has_errors = last_error_pos > last_success_pos
+        
+        # Also ignore errors if the output explicitly shows a successful restart
+        if "Restarted application in" in reload_output and "ms" in reload_output:
+            has_errors = False
+        
+        if has_errors:
+            print("🔥 Compilation errors detected, starting AI recovery...")
+            conversation_id = getattr(self, '_recovery_conversation_id', None)
+            chat_manager = getattr(self, '_chat_manager', None)
+            
+            # Use the new HotReloadRecoveryService
+            try:
+                from code_modification.hot_reload_recovery import get_recovery_service
+                
+                recovery_service = get_recovery_service(
+                    project_path=self.project_path,
+                    flutter_manager=self,
+                    chat_manager=chat_manager
+                )
+                
+                # Run recovery in a separate thread to avoid event loop conflicts
+                import threading
+                import queue
+                
+                result_queue = queue.Queue()
+                
+                def run_recovery():
+                    try:
+                        recovery_result = asyncio.run(
+                            recovery_service.attempt_recovery(
+                                error_output=reload_output,
+                                conversation_id=conversation_id,
+                                max_retries=max_retries
+                            )
+                        )
+                        result_queue.put(("success", recovery_result))
+                    except Exception as e:
+                        result_queue.put(("error", str(e)))
+                
+                # Start recovery in separate thread
+                recovery_thread = threading.Thread(target=run_recovery)
+                recovery_thread.start()
+                recovery_thread.join(timeout=300)  # 5 minute timeout
+                
+                if recovery_thread.is_alive():
+                    return {
+                        "status": "error_recovery_timeout",
+                        "success": False,
+                        "message": "Error recovery timed out after 5 minutes",
+                        "final_error": reload_output,
+                        "attempts": 0
+                    }
+                
+                # Get result from queue
+                try:
+                    result_type, result_data = result_queue.get_nowait()
+                    if result_type == "success":
+                        recovery_result = result_data
+                        if recovery_result.success:
+                            return {
+                                "status": "error_recovery_success",
+                                "success": True,
+                                "message": f"Error recovered after {recovery_result.attempts} attempt(s)",
+                                "attempts": recovery_result.attempts,
+                                "fix_applied": recovery_result.fix_applied
+                            }
+                        else:
+                            return {
+                                "status": "error_recovery_failed",
+                                "success": False,
+                                "message": f"Error recovery failed after {recovery_result.attempts} attempts",
+                                "final_error": recovery_result.final_error,
+                                "attempts": recovery_result.attempts
+                            }
+                    else:
+                        raise Exception(result_data)
+                except queue.Empty:
+                    return {
+                        "status": "error_recovery_failed",
+                        "success": False,
+                        "message": "Error recovery failed - no result returned",
+                        "final_error": reload_output,
+                        "attempts": 0
+                    }
+                    
+            except Exception as e:
+                print(f"Error recovery service failed: {e}")
+                return {
+                    "status": "error_recovery_failed",
+                    "success": False,
+                    "message": f"Recovery service error: {str(e)}",
+                    "final_error": reload_output,
+                    "attempts": 0
+                }
+        else:
+            success_patterns = [
+                "Restarted application",
+                "Hot reload performed",
+                "Performing hot restart",
+                "Hot reload.",
+                "successfully"
+            ]
+            has_success = any(pattern in reload_output for pattern in success_patterns)
+            
+            if has_success:
+                return {
+                    "status": "hot_reloaded",
+                    "success": True,
+                    "message": "Hot reload completed successfully",
+                    "output": reload_output
+                }
+            else:
+                return {
+                    "status": "hot_reloaded",
+                    "success": True,
+                    "message": "Hot reload triggered (status unclear)",
+                    "output": reload_output
+                }
+    
+    # Old error recovery methods removed - now using HotReloadRecoveryService
+    
+    def set_recovery_chat_context(self, chat_manager, conversation_id):
+        """Set chat context for sending recovery progress messages"""
+        self._chat_manager = chat_manager
+        self._recovery_conversation_id = conversation_id
+    
+    def _send_recovery_message(self, conversation_id, message):
+        """Send recovery progress message to chat"""
+        if hasattr(self, '_chat_manager') and self._chat_manager:
+            self._chat_manager.add_message(conversation_id, 'assistant', message)
     
     def trigger_hot_reload(self):
         """Alias for hot_reload() to match BuildPipelineService interface"""

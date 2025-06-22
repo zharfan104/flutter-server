@@ -45,7 +45,7 @@ class ModificationRequest:
     context: Optional[Dict] = None
     user_id: Optional[str] = None
     request_id: Optional[str] = None
-    max_retries: int = 3
+    max_retries: int = 20
     images: Optional[List[Dict[str, str]]] = None
     existing_changes: Optional[Set[str]] = None
 
