@@ -69,12 +69,13 @@ class DartAnalysisService:
         self.project_path = Path(project_path)
         self.lib_path = self.project_path / "lib"
         
-    def run_analysis(self, target_path: Optional[str] = None) -> AnalysisResult:
+    def run_analysis(self, target_path: Optional[str] = None, errors_only: bool = False) -> AnalysisResult:
         """
         Run dart analyze on the project
         
         Args:
             target_path: Specific path to analyze, defaults to lib directory
+            errors_only: If True, only return errors (skip warnings/info)
             
         Returns:
             AnalysisResult with parsed issues
@@ -146,6 +147,11 @@ class DartAnalysisService:
             
             # Parse the output
             issues = self._parse_analyze_output(full_output)
+            
+            # Filter for errors only if requested
+            if errors_only:
+                issues = [issue for issue in issues if issue.type == AnalysisType.ERROR]
+            
             errors = [issue for issue in issues if issue.type == AnalysisType.ERROR]
             warnings = [issue for issue in issues if issue.type == AnalysisType.WARNING]
             

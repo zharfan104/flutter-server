@@ -1,0 +1,506 @@
+{
+  "session_summary": {
+    "session_id": "dart_fix_1750608852",
+    "start_time": "2025-06-22T23:14:12.891336",
+    "duration_seconds": 176.5,
+    "metrics": {
+      "session_id": "dart_fix_1750608852",
+      "start_time": 1750608852.891336,
+      "end_time": 1750609029.392945,
+      "total_attempts": 3,
+      "successful_attempts": 1,
+      "failed_attempts": 2,
+      "commands_executed": 9,
+      "fixes_applied": 2,
+      "files_modified": 2,
+      "initial_error_count": 8,
+      "final_error_count": 0,
+      "total_duration": 176.50160908699036,
+      "success": true
+    },
+    "total_attempts": 3,
+    "total_stages": 22,
+    "total_commands": 9,
+    "successful_commands": 1,
+    "failed_commands": 8,
+    "files_modified": 2,
+    "latest_attempt": "AttemptLog(attempt_number=3, stage=<RecoveryStage.ERROR_ANALYSIS: 'error_analysis'>, timestamp=1750608974.7880566, duration=51.757625579833984, success=True, error_count_before=8, error_count_after=0, commands_executed=['dart fix --apply', 'dart format .'], fixes_applied=2, files_modified=['lib/main.dart', 'lib/screens/login_screen.dart'], error_message=None, context=None)"
+  },
+  "attempt_logs": [
+    {
+      "attempt_number": 1,
+      "stage": "RecoveryStage.ERROR_ANALYSIS",
+      "timestamp": 1750608856.2783089,
+      "duration": 60.679784536361694,
+      "success": false,
+      "error_count_before": 8,
+      "error_count_after": 8,
+      "commands_executed": [
+        "dart fix --apply",
+        "dart fix --apply",
+        "dart format .",
+        "dart fix --apply"
+      ],
+      "fixes_applied": 0,
+      "files_modified": [],
+      "error_message": null,
+      "context": null
+    },
+    {
+      "attempt_number": 2,
+      "stage": "RecoveryStage.ERROR_ANALYSIS",
+      "timestamp": 1750608916.9592888,
+      "duration": 57.827467918395996,
+      "success": false,
+      "error_count_before": 8,
+      "error_count_after": 8,
+      "commands_executed": [
+        "dart fix --apply",
+        "dart format ."
+      ],
+      "fixes_applied": 0,
+      "files_modified": [],
+      "error_message": null,
+      "context": null
+    },
+    {
+      "attempt_number": 3,
+      "stage": "RecoveryStage.ERROR_ANALYSIS",
+      "timestamp": 1750608974.7880566,
+      "duration": 51.757625579833984,
+      "success": true,
+      "error_count_before": 8,
+      "error_count_after": 0,
+      "commands_executed": [
+        "dart fix --apply",
+        "dart format ."
+      ],
+      "fixes_applied": 2,
+      "files_modified": [
+        "lib/main.dart",
+        "lib/screens/login_screen.dart"
+      ],
+      "error_message": null,
+      "context": null
+    }
+  ],
+  "stage_logs": [
+    {
+      "stage": "initialization",
+      "timestamp": 1750608852.8933418,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": null,
+      "context": {
+        "session_id": "dart_fix_1750608852",
+        "initial_error_count": null,
+        "start_time": "2025-06-22T23:14:12.891336"
+      }
+    },
+    {
+      "stage": "error_capture",
+      "timestamp": 1750608852.8947523,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": null,
+      "context": {}
+    },
+    {
+      "stage": "error_analysis",
+      "timestamp": 1750608856.2532184,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": null,
+      "context": {
+        "snapshot": {
+          "attempt_number": 0,
+          "total_errors": 8,
+          "total_warnings": 2,
+          "error_categories": {
+            "error": 8,
+            "type_errors": 8,
+            "warning": 2
+          },
+          "context": "Initial analysis"
+        }
+      }
+    },
+    {
+      "stage": "initialization",
+      "timestamp": 1750608856.2544546,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": null,
+      "context": {
+        "session_id": "dart_fix_1750608852",
+        "initial_error_count": 8,
+        "start_time": "2025-06-22T23:14:12.891336"
+      }
+    },
+    {
+      "stage": "command_planning",
+      "timestamp": 1750608856.2810574,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 1,
+      "context": {}
+    },
+    {
+      "stage": "command_execution",
+      "timestamp": 1750608856.2810888,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 1,
+      "context": {}
+    },
+    {
+      "stage": "fix_generation",
+      "timestamp": 1750608864.9136233,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 1,
+      "context": {}
+    },
+    {
+      "stage": "error_analysis",
+      "timestamp": 1750608916.954124,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 1,
+      "context": {
+        "snapshot": {
+          "attempt_number": 1,
+          "total_errors": 8,
+          "total_warnings": 1,
+          "error_categories": {
+            "error": 8,
+            "type_errors": 8,
+            "warning": 1
+          },
+          "context": "After attempt 1"
+        }
+      }
+    },
+    {
+      "stage": "progress_analysis",
+      "timestamp": 1750608916.9556167,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 1,
+      "context": {
+        "diff": {
+          "from_attempt": 0,
+          "to_attempt": 1,
+          "progress_score": 0.0,
+          "regression_score": 0.0,
+          "summary": {
+            "modified": 2,
+            "errors_modified": 1,
+            "warnings_modified": 1
+          },
+          "changes_count": 2
+        }
+      }
+    },
+    {
+      "stage": "command_planning",
+      "timestamp": 1750608916.99648,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 2,
+      "context": {}
+    },
+    {
+      "stage": "command_execution",
+      "timestamp": 1750608916.9965103,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 2,
+      "context": {}
+    },
+    {
+      "stage": "fix_generation",
+      "timestamp": 1750608919.1055267,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 2,
+      "context": {}
+    },
+    {
+      "stage": "error_analysis",
+      "timestamp": 1750608974.7824652,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 2,
+      "context": {
+        "snapshot": {
+          "attempt_number": 2,
+          "total_errors": 8,
+          "total_warnings": 1,
+          "error_categories": {
+            "error": 8,
+            "type_errors": 8,
+            "warning": 1
+          },
+          "context": "After attempt 2"
+        }
+      }
+    },
+    {
+      "stage": "progress_analysis",
+      "timestamp": 1750608974.7840054,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 2,
+      "context": {
+        "diff": {
+          "from_attempt": 1,
+          "to_attempt": 2,
+          "progress_score": 0.0,
+          "regression_score": 0.0,
+          "summary": {
+            "persistent": 2,
+            "errors_persistent": 1,
+            "warnings_persistent": 1
+          },
+          "changes_count": 2
+        }
+      }
+    },
+    {
+      "stage": "command_planning",
+      "timestamp": 1750608974.790526,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 3,
+      "context": {}
+    },
+    {
+      "stage": "command_execution",
+      "timestamp": 1750608974.7905495,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 3,
+      "context": {}
+    },
+    {
+      "stage": "fix_generation",
+      "timestamp": 1750608976.7838185,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 3,
+      "context": {}
+    },
+    {
+      "stage": "fix_application",
+      "timestamp": 1750609024.8769722,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 3,
+      "context": {}
+    },
+    {
+      "stage": "error_analysis",
+      "timestamp": 1750609026.5415,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 3,
+      "context": {
+        "snapshot": {
+          "attempt_number": 3,
+          "total_errors": 0,
+          "total_warnings": 0,
+          "error_categories": {
+            "info": 3
+          },
+          "context": "After attempt 3"
+        }
+      }
+    },
+    {
+      "stage": "progress_analysis",
+      "timestamp": 1750609026.5427985,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 3,
+      "context": {
+        "diff": {
+          "from_attempt": 2,
+          "to_attempt": 3,
+          "progress_score": 1.0,
+          "regression_score": 0.3333333333333333,
+          "summary": {
+            "fixed": 2,
+            "errors_fixed": 1,
+            "warnings_fixed": 1,
+            "new": 1
+          },
+          "changes_count": 3
+        }
+      }
+    },
+    {
+      "stage": "validation",
+      "timestamp": 1750609026.5474267,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": null,
+      "context": {}
+    },
+    {
+      "stage": "completion",
+      "timestamp": 1750609029.3929613,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": null,
+      "context": {
+        "session_id": "dart_fix_1750608852",
+        "success": true,
+        "final_error_count": 0,
+        "total_duration": 176.50160908699036,
+        "error_message": null,
+        "metrics": {
+          "session_id": "dart_fix_1750608852",
+          "start_time": 1750608852.891336,
+          "end_time": 1750609029.392945,
+          "total_attempts": 3,
+          "successful_attempts": 1,
+          "failed_attempts": 2,
+          "commands_executed": 9,
+          "fixes_applied": 2,
+          "files_modified": 2,
+          "initial_error_count": 8,
+          "final_error_count": 0,
+          "total_duration": 176.50160908699036,
+          "success": true
+        }
+      }
+    }
+  ],
+  "command_logs": [
+    {
+      "timestamp": 1750608854.5308475,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": null,
+      "command": "flutter pub get",
+      "args": [
+        "get"
+      ],
+      "success": false,
+      "exit_code": -1,
+      "execution_time": 1.6195340156555176,
+      "timeout": false,
+      "error_message": "Command execution failed: <LogCategory.SHELL_CMD: 'shell_command'>",
+      "context": "Initial pub get",
+      "stdout_length": 0,
+      "stderr_length": 0
+    },
+    {
+      "timestamp": 1750608861.3552566,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 1,
+      "command": "dart fix --apply",
+      "args": [
+        "--apply"
+      ],
+      "success": false,
+      "exit_code": -1,
+      "execution_time": 5.069173812866211,
+      "timeout": false,
+      "error_message": "Command execution failed: <LogCategory.SHELL_CMD: 'shell_command'>",
+      "context": "Suggested command for error fixing",
+      "stdout_length": 0,
+      "stderr_length": 0
+    },
+    {
+      "timestamp": 1750608864.9121375,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 1,
+      "command": "dart fix --apply",
+      "args": [
+        "--apply"
+      ],
+      "success": false,
+      "exit_code": -1,
+      "execution_time": 2.547086238861084,
+      "timeout": false,
+      "error_message": "Command execution failed: <LogCategory.SHELL_CMD: 'shell_command'>",
+      "context": "Automatic dart fix",
+      "stdout_length": 0,
+      "stderr_length": 0
+    },
+    {
+      "timestamp": 1750608915.6337914,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 1,
+      "command": "dart format .",
+      "args": [],
+      "success": false,
+      "exit_code": 65,
+      "execution_time": 0.6416523456573486,
+      "timeout": false,
+      "error_message": "Could not format because the source could not be parsed:\n\nline 97, column 29 of lib/main.dart: Expected an identifier.\n   \u2577\n97 \u2502           if (user != null) ..[\n   \u2502                             ^^\n   \u2575\nline 106, column 14 of lib/main.dart: Expected to find ']'.\n    \u2577\n106 \u2502             ),\n    \u2502              ^\n    \u2575\nline 119, column 31 of lib/main.dart: Expected an identifier.\n    \u2577\n119 \u2502             if (user != null) ..[\n    \u2502                               ^^\n    \u2575\nline 152, column 16 of lib/main.dart: Expected to find ']'.\n    \u2577\n152 \u2502               ),\n    \u2502                ^\n    \u2575\nCould not format because the source could not be parsed:\n\nline 130, column 38 of lib/screens/login_screen.dart: Expected an identifier.\n    \u2577\n130 \u2502                   if (!_isLoginMode) ..[\n    \u2502                                      ^^\n    \u2575\nline 150, column 22 of lib/screens/login_screen.dart: Expected to find ']'.\n    \u2577\n150 \u2502                     ),\n    \u2502                      ^\n    \u2575\nline 214, column 46 of lib/screens/login_screen.dart: Expected an identifier.\n    \u2577\n214 \u2502                   if (_errorMessage != null) ..[\n    \u2502                                              ^^\n    \u2575\nline 228, column 22 of lib/screens/login_screen.dart: Expected to find ']'.\n    \u2577\n228 \u2502                     ),\n    \u2502                      ^\n    \u2575\n",
+      "context": "AI-suggested shell command",
+      "stdout_length": 47,
+      "stderr_length": 1319
+    },
+    {
+      "timestamp": 1750608915.6354551,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 1,
+      "command": "dart fix --apply",
+      "args": [],
+      "success": true,
+      "exit_code": 0,
+      "execution_time": 2.0763907432556152,
+      "timeout": false,
+      "error_message": null,
+      "context": "AI-suggested shell command",
+      "stdout_length": 46,
+      "stderr_length": 0
+    },
+    {
+      "timestamp": 1750608919.1037834,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 2,
+      "command": "dart fix --apply",
+      "args": [
+        "--apply"
+      ],
+      "success": false,
+      "exit_code": -1,
+      "execution_time": 2.102036476135254,
+      "timeout": false,
+      "error_message": "Command execution failed: <LogCategory.SHELL_CMD: 'shell_command'>",
+      "context": "Automatic dart fix",
+      "stdout_length": 0,
+      "stderr_length": 0
+    },
+    {
+      "timestamp": 1750608973.9537394,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 2,
+      "command": "dart format .",
+      "args": [],
+      "success": false,
+      "exit_code": 65,
+      "execution_time": 0.6419551372528076,
+      "timeout": false,
+      "error_message": "Could not format because the source could not be parsed:\n\nline 97, column 29 of lib/main.dart: Expected an identifier.\n   \u2577\n97 \u2502           if (user != null) ..[\n   \u2502                             ^^\n   \u2575\nline 106, column 14 of lib/main.dart: Expected to find ']'.\n    \u2577\n106 \u2502             ),\n    \u2502              ^\n    \u2575\nline 119, column 31 of lib/main.dart: Expected an identifier.\n    \u2577\n119 \u2502             if (user != null) ..[\n    \u2502                               ^^\n    \u2575\nline 152, column 16 of lib/main.dart: Expected to find ']'.\n    \u2577\n152 \u2502               ),\n    \u2502                ^\n    \u2575\nCould not format because the source could not be parsed:\n\nline 130, column 38 of lib/screens/login_screen.dart: Expected an identifier.\n    \u2577\n130 \u2502                   if (!_isLoginMode) ..[\n    \u2502                                      ^^\n    \u2575\nline 150, column 22 of lib/screens/login_screen.dart: Expected to find ']'.\n    \u2577\n150 \u2502                     ),\n    \u2502                      ^\n    \u2575\nline 214, column 46 of lib/screens/login_screen.dart: Expected an identifier.\n    \u2577\n214 \u2502                   if (_errorMessage != null) ..[\n    \u2502                                              ^^\n    \u2575\nline 228, column 22 of lib/screens/login_screen.dart: Expected to find ']'.\n    \u2577\n228 \u2502                     ),\n    \u2502                      ^\n    \u2575\n",
+      "context": "AI-suggested shell command",
+      "stdout_length": 47,
+      "stderr_length": 1319
+    },
+    {
+      "timestamp": 1750608976.7823918,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 3,
+      "command": "dart fix --apply",
+      "args": [
+        "--apply"
+      ],
+      "success": false,
+      "exit_code": -1,
+      "execution_time": 1.9870734214782715,
+      "timeout": false,
+      "error_message": "Command execution failed: <LogCategory.SHELL_CMD: 'shell_command'>",
+      "context": "Automatic dart fix",
+      "stdout_length": 0,
+      "stderr_length": 0
+    },
+    {
+      "timestamp": 1750609024.8737597,
+      "session_id": "dart_fix_1750608852",
+      "attempt_number": 3,
+      "command": "dart format .",
+      "args": [],
+      "success": false,
+      "exit_code": 65,
+      "execution_time": 0.6097984313964844,
+      "timeout": false,
+      "error_message": "Could not format because the source could not be parsed:\n\nline 97, column 29 of lib/main.dart: Expected an identifier.\n   \u2577\n97 \u2502           if (user != null) ..[\n   \u2502                             ^^\n   \u2575\nline 106, column 14 of lib/main.dart: Expected to find ']'.\n    \u2577\n106 \u2502             ),\n    \u2502              ^\n    \u2575\nline 119, column 31 of lib/main.dart: Expected an identifier.\n    \u2577\n119 \u2502             if (user != null) ..[\n    \u2502                               ^^\n    \u2575\nline 152, column 16 of lib/main.dart: Expected to find ']'.\n    \u2577\n152 \u2502               ),\n    \u2502                ^\n    \u2575\nCould not format because the source could not be parsed:\n\nline 130, column 38 of lib/screens/login_screen.dart: Expected an identifier.\n    \u2577\n130 \u2502                   if (!_isLoginMode) ..[\n    \u2502                                      ^^\n    \u2575\nline 150, column 22 of lib/screens/login_screen.dart: Expected to find ']'.\n    \u2577\n150 \u2502                     ),\n    \u2502                      ^\n    \u2575\nline 214, column 46 of lib/screens/login_screen.dart: Expected an identifier.\n    \u2577\n214 \u2502                   if (_errorMessage != null) ..[\n    \u2502                                              ^^\n    \u2575\nline 228, column 22 of lib/screens/login_screen.dart: Expected to find ']'.\n    \u2577\n228 \u2502                     ),\n    \u2502                      ^\n    \u2575\n",
+      "context": "AI-suggested shell command",
+      "stdout_length": 47,
+      "stderr_length": 1319
+    }
+  ],
+  "export_timestamp": "2025-06-22T23:17:09.394326"
+}

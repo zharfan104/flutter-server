@@ -117,12 +117,13 @@ Provide ONLY the corrected file contents, no explanations.
             self.status_callback(message)
         print(f"[IterativeErrorFixer] {message}")
     
-    async def fix_all_errors(self, max_attempts: int = 16) -> FixingResult:
+    async def fix_all_errors(self, max_attempts: int = 16, errors_only: bool = False) -> FixingResult:
         """
         Main method to iteratively fix all errors
         
         Args:
             max_attempts: Maximum number of fix attempts
+            errors_only: If True, only fix errors (skip warnings/info)
             
         Returns:
             FixingResult with detailed information about the fixing process
@@ -160,7 +161,7 @@ Provide ONLY the corrected file contents, no explanations.
         if MONITORING_AVAILABLE:
             logger.debug(LogCategory.ERROR_FIXING, "Running initial Dart analysis")
         
-        initial_analysis = self.analysis_service.run_analysis()
+        initial_analysis = self.analysis_service.run_analysis(errors_only=errors_only)
         initial_errors = len(initial_analysis.errors)
         
         if MONITORING_AVAILABLE:
@@ -234,7 +235,7 @@ Provide ONLY the corrected file contents, no explanations.
             if MONITORING_AVAILABLE:
                 logger.debug(LogCategory.ERROR_FIXING, "Re-analyzing code after fixes")
             
-            current_analysis = self.analysis_service.run_analysis()
+            current_analysis = self.analysis_service.run_analysis(errors_only=errors_only)
             errors_after = len(current_analysis.errors)
             
             attempt_time = time.time() - attempt_start

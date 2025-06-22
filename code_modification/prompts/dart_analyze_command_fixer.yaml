@@ -12,7 +12,10 @@ prompt: |
   Current Error Count: {error_count}
   Current Warning Count: {warning_count}
 
-  ## Dart Analysis Output
+  ## Previous Attempts (Learn from failures)
+  {previous_attempts}
+
+  ## Dart Analysis Output (Top 10 Most Critical)
   {analysis_output}
 
   ## Categorized Errors
@@ -27,46 +30,17 @@ prompt: |
   3. **Command Analysis**: Determine which Flutter/Dart commands should be executed for dependency/build issues
   4. **Priority Ordering**: Direct complete file fixes first, then shell commands for dependencies
 
-  ## Available Commands
-  
-  **Dependency Management:**
-  - `flutter pub get` - Update dependencies
+  ## Available Commands (Use only if needed after file fixes)
+  - `flutter pub get` - Update dependencies  
   - `flutter pub add <package>` - Add missing packages
-  
-  **Code Generation:**
-  - `flutter packages pub run build_runner build` - Generate code (for .g.dart files)
-  
-  **Code Quality:**
-  - `dart format .` - Format code and fix syntax issues
+  - `flutter packages pub run build_runner build` - Generate .g.dart files
+  - `dart format .` - Format code
   - `dart fix --apply` - Apply automatic fixes
   
-  **Project Maintenance:**
-  - `flutter clean` - Clean build cache
-  
-  ## Common Error Patterns & Solutions
-
-  **PRIORITY 1: Complete File Generation (Apply These First!)**
-  
-  **Flutter Typos (HIGH PRIORITY - Fix Immediately):**
-  - `runsApp()` → `runApp()` (most common Flutter typo)
-  - `StatelessWidget` typos → Fix spelling
-  - Function name typos → Correct the spelling
-  
-  **Undefined Function/Symbol Errors:**
-  - Check if it's a typo in a standard Flutter/Dart function
-  - Look for similar named functions in Flutter framework
-  - Generate complete corrected file contents
-  
-  **PRIORITY 2: Shell Commands (Only if needed after file fixes)**
-  
-  **Import/Dependency Errors:**
-  - Missing package imports → `flutter pub add <package>`
-  - Target of URI doesn't exist → `flutter pub get`
-  - Part files missing → `build_runner build`
-
-  **Generated Code Issues:**
-  - .g.dart files missing → `build_runner build`
-  - Part of declarations → Check .g.dart generation
+  ## Fix Priority Order
+  1. **Typos**: `runsApp()` → `runApp()`, `StatelessWidget` spelling
+  2. **Complete File Generation**: Provide full corrected file contents  
+  3. **Commands Only If Needed**: Import errors → `pub get`, Missing .g.dart → `build_runner`
 
   ## Response Format
   
@@ -85,30 +59,13 @@ prompt: |
       }},
       "recommended_approach": "brief strategy description"
     }},
-    "recommended_commands": [
-      {{
-        "command": "flutter pub get",
-        "reason": "Fix dependency resolution for import errors",
-        "priority": "high",
-        "expected_impact": "Should resolve X import errors"
-      }}
-    ],
     "code_fixes": [
       {{
         "file_path": "lib/main.dart",
-        "error_description": "The function 'runsApp' isn't defined - likely typo",
-        "fix_type": "typo_correction",
-        "file_content": "import 'package:flutter/material.dart';\n\nvoid main() {{\n  runApp(const MyApp());\n}}\n\nclass MyApp extends StatelessWidget {{\n  const MyApp({{Key? key}}) : super(key: key);\n\n  @override\n  Widget build(BuildContext context) {{\n    return MaterialApp(\n      title: 'Flutter Demo',\n      theme: ThemeData(primarySwatch: Colors.blue),\n      home: const MyHomePage(),\n    );\n  }}\n}}",
-        "explanation": "Complete file with typo fix: runsApp → runApp",
+        "error_description": "Function 'runsApp' undefined - typo",
+        "fix_type": "typo_correction", 
+        "file_content": "COMPLETE_FILE_CONTENT_HERE",
         "priority": "high"
-      }},
-      {{
-        "file_path": "lib/example.dart",
-        "error_description": "Type 'Foo' not found",
-        "fix_type": "missing_import",
-        "file_content": "import 'package:flutter/material.dart';\nimport 'package:project/models/foo.dart';\n\nclass ExampleWidget extends StatelessWidget {{\n  const ExampleWidget({{Key? key}}) : super(key: key);\n\n  @override\n  Widget build(BuildContext context) {{\n    return Scaffold(\n      body: Center(child: Text('Example with Foo')),\n    );\n  }}\n}}",
-        "explanation": "Complete file with missing import added",
-        "priority": "medium"
       }}
     ],
     "shell_commands": [
@@ -126,14 +83,10 @@ prompt: |
   ```
 
   ## Critical Guidelines
-
-  1. **COMPLETE FILES FIRST**: For syntax/typo errors, always provide complete corrected file contents before shell commands
-  2. **Typo Detection**: Check if "undefined function" errors are simple typos (especially `runsApp` → `runApp`)
-  3. **Full File Generation**: Generate complete, syntactically correct file contents with all necessary imports
-  4. **Shell Commands Second**: Only suggest shell commands for dependency/build issues after file fixes
-  5. **Error Context**: Use exact file paths from dart analyze output
-  6. **Impact Assessment**: Prioritize fixes that resolve compilation errors over warnings
-  7. **Syntax Validation**: Ensure all generated files have proper syntax, balanced braces, and correct imports
+  1. **Complete files first** - Full corrected content, not snippets
+  2. **Check for typos** - `runsApp` → `runApp` etc.
+  3. **Shell commands last** - Only for dependencies after file fixes
+  4. **Use exact paths** from dart analyze output
 
   ## Shell Command Execution
 
@@ -141,21 +94,9 @@ prompt: |
 
   **Examples:**
   ```
-  <shell description="Update dependencies to resolve import errors">flutter pub get</shell>
-  <shell description="Generate missing .g.dart files">flutter packages pub run build_runner build</shell>
-  <shell description="Fix code formatting issues">dart format .</shell>
-  <shell description="Apply automatic lint fixes">dart fix --apply</shell>
-  <shell description="Add missing package">flutter pub add http</shell>
+  <shell>flutter pub get</shell>
+  <shell>flutter packages pub run build_runner build</shell>
+  <shell>dart format .</shell>
   ```
 
-  **Priority Commands:**
-  - Import errors → `<shell>flutter pub get</shell>` or `<shell>flutter pub add package_name</shell>`
-  - Generated code errors → `<shell>flutter packages pub run build_runner build</shell>`
-  - Formatting errors → `<shell>dart format .</shell>`
-  - Auto-fixable issues → `<shell>dart fix --apply</shell>`
-
-  Commands in `<shell>` tags will be executed immediately during the recovery process.
-
-  Generate comprehensive analysis with both command recommendations and complete file contents to systematically resolve all Dart compilation errors.
-  
-  **CRITICAL**: Always provide complete file contents in the `file_content` field, not snippets. The system will write the entire file contents you provide.
+  **CRITICAL**: Provide complete file contents in `file_content`, not snippets.

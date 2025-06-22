@@ -8,6 +8,7 @@ import asyncio
 import time
 import json
 import os
+import re
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,6 +38,18 @@ try:
 except ImportError:
     MONITORING_AVAILABLE = False
 
+
+@dataclass
+class AttemptMemory:
+    """Memory of previous attempt for token-efficient context"""
+    attempt_number: int
+    errors_before: int
+    errors_after: int
+    commands_failed: List[str]
+    files_modified: List[str]
+    persistent_errors: List[str]  # Error patterns that didn't change
+    success: bool
+    brief_summary: str  # Max 50 words about what was tried
 
 @dataclass
 class FixingConfig:
@@ -87,6 +100,10 @@ class DartAnalysisFixer:
         self.session_id = f"dart_fix_{int(time.time())}"
         self.diff_analyzer: Optional[ErrorDiffAnalyzer] = None
         self.logger: Optional[ComprehensiveLogger] = None
+        
+        # Attempt memory for token-efficient context
+        self.attempt_history: List[AttemptMemory] = []
+        self.repeated_errors: Dict[str, int] = {}  # Track error frequency
         
         if MONITORING_AVAILABLE:
             logger.info(LogCategory.SYSTEM, "DartAnalysisFixer initialized",
@@ -181,6 +198,202 @@ class DartAnalysisFixer:
             
             return self._create_error_result(error_msg, start_time)
     
+    def _create_attempt_memory(self, attempt: int, errors_before: int, errors_after: int, 
+                             commands_failed: List[str], files_modified: List[str], 
+                             persistent_errors: List[str], success: bool) -> AttemptMemory:
+        """Create memory of current attempt"""
+        # Generate brief summary (max 50 words)
+        summary_parts = []
+        if commands_failed:
+            summary_parts.append(f"Commands failed: {', '.join(commands_failed[:2])}")
+        if files_modified:
+            summary_parts.append(f"Modified: {', '.join([f.split('/')[-1] for f in files_modified[:2]])}")
+        if persistent_errors:
+            summary_parts.append(f"Persistent: {len(persistent_errors)} errors")
+        
+        brief_summary = "; ".join(summary_parts) if summary_parts else "No changes made"
+        if len(brief_summary) > 200:  # Truncate if too long
+            brief_summary = brief_summary[:197] + "..."
+        
+        return AttemptMemory(
+            attempt_number=attempt,
+            errors_before=errors_before,
+            errors_after=errors_after,
+            commands_failed=commands_failed,
+            files_modified=files_modified,
+            persistent_errors=persistent_errors,
+            success=success,
+            brief_summary=brief_summary
+        )
+    
+    def _get_relevant_history_context(self, max_tokens: int = 300) -> str:
+        """Get relevant attempt history context, token-efficient"""
+        if not self.attempt_history:
+            return ""
+        
+        # Include only last 2-3 attempts and focus on failures
+        recent_attempts = self.attempt_history[-3:]
+        context_parts = []
+        
+        for memory in recent_attempts:
+            if not memory.success or memory.commands_failed or memory.persistent_errors:
+                context_line = f"Attempt {memory.attempt_number}: {memory.brief_summary}"
+                if memory.commands_failed:
+                    context_line += f" (Failed commands: {', '.join(memory.commands_failed[:2])})"
+                context_parts.append(context_line)
+        
+        context = "\n".join(context_parts)
+        
+        # Truncate if too long (estimate ~4 chars per token)
+        if len(context) > max_tokens * 4:
+            context = context[:max_tokens * 4 - 20] + "..."
+        
+        return context
+    
+    def _should_exit_early(self, current_errors: List[str], attempt: int) -> Tuple[bool, str]:
+        """Check if we should exit early based on patterns"""
+        # Exit if same error repeats 3 times
+        current_error_patterns = set(current_errors[:10])  # Check top 10 errors
+        
+        for error_pattern in current_error_patterns:
+            self.repeated_errors[error_pattern] = self.repeated_errors.get(error_pattern, 0) + 1
+            if self.repeated_errors[error_pattern] >= 3:
+                return True, f"Error pattern repeated 3 times: {error_pattern[:100]}..."
+        
+        # Exit if no progress after 5 attempts
+        if attempt >= 5 and len(self.attempt_history) >= 2:
+            recent_attempts = self.attempt_history[-2:]
+            if all(not attempt.success for attempt in recent_attempts):
+                return True, "No progress in last 2 attempts"
+        
+        # Exit if error count not decreasing for multiple attempts
+        if len(self.attempt_history) >= 3:
+            recent_error_counts = [mem.errors_after for mem in self.attempt_history[-3:]]
+            if recent_error_counts[0] == recent_error_counts[1] == recent_error_counts[2]:
+                return True, "Error count not decreasing for 3 attempts"
+        
+        return False, ""
+    
+    def _parse_ai_response_json(self, response_text: str) -> Optional[Dict]:
+        """Enhanced JSON parsing with multiple fallback strategies"""
+        if not response_text:
+            return None
+        
+        # Strategy 1: Try direct JSON parsing (with JSON_UTILS if available)
+        if JSON_UTILS_AVAILABLE:
+            result = safe_json_loads(response_text, "AI fix generation", default=None)
+            if result:
+                return result
+        else:
+            try:
+                return json.loads(response_text.strip())
+            except json.JSONDecodeError:
+                pass
+        
+        # Strategy 2: Extract JSON from markdown code blocks
+        json_patterns = [
+            r'```json\s*(\{.*?\})\s*```',
+            r'```\s*(\{.*?\})\s*```',
+        ]
+        
+        for pattern in json_patterns:
+            matches = re.findall(pattern, response_text, re.DOTALL | re.IGNORECASE)
+            for match in matches:
+                try:
+                    return json.loads(match.strip())
+                except json.JSONDecodeError:
+                    continue
+        
+        # Strategy 3: Find the largest JSON-like object in the response
+        brace_count = 0
+        json_start = -1
+        
+        for i, char in enumerate(response_text):
+            if char == '{':
+                if brace_count == 0:
+                    json_start = i
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0 and json_start != -1:
+                    json_candidate = response_text[json_start:i+1]
+                    try:
+                        result = json.loads(json_candidate)
+                        if isinstance(result, dict) and result:
+                            return result
+                    except json.JSONDecodeError:
+                        continue
+        
+        # Strategy 4: Regex-based extraction for common patterns
+        try:
+            # Look for code_fixes array
+            code_fixes_match = re.search(r'"code_fixes"\s*:\s*\[(.*?)\]', response_text, re.DOTALL)
+            if code_fixes_match:
+                # Try to construct a minimal valid JSON
+                minimal_json = f'{{"code_fixes": [{code_fixes_match.group(1)}]}}'
+                try:
+                    return json.loads(minimal_json)
+                except json.JSONDecodeError:
+                    pass
+            
+            # Look for shell_commands array
+            shell_match = re.search(r'"shell_commands"\s*:\s*\[(.*?)\]', response_text, re.DOTALL)
+            if shell_match:
+                minimal_json = f'{{"shell_commands": [{shell_match.group(1)}]}}'
+                try:
+                    return json.loads(minimal_json)
+                except json.JSONDecodeError:
+                    pass
+        
+        except Exception as e:
+            if MONITORING_AVAILABLE:
+                logger.debug(LogCategory.CODE_GENERATION, f"Regex extraction failed: {e}",
+                           context={"session_id": self.session_id})
+        
+        # Strategy failure - log and return None
+        if MONITORING_AVAILABLE:
+            logger.warn(LogCategory.CODE_GENERATION, "All JSON parsing strategies failed",
+                       context={"session_id": self.session_id, "response_preview": response_text[:300]})
+        
+        return None
+    
+    def _limit_analysis_output(self, output: str, max_errors: int = 10) -> str:
+        """Limit analysis output to most relevant errors for token efficiency"""
+        if not output:
+            return output
+        
+        lines = output.split('\n')
+        error_lines = []
+        other_lines = []
+        
+        # Separate error lines from other output
+        for line in lines:
+            if ' error:' in line.lower() or ' warning:' in line.lower():
+                error_lines.append(line)
+            else:
+                other_lines.append(line)
+        
+        # Take only the first max_errors error lines
+        limited_errors = error_lines[:max_errors]
+        
+        # Combine with summary info
+        result_lines = []
+        
+        # Add summary line if we have more errors
+        if len(error_lines) > max_errors:
+            result_lines.append(f"[Showing {max_errors} of {len(error_lines)} total errors]")
+        
+        # Add limited errors
+        result_lines.extend(limited_errors)
+        
+        # Add final summary line if present
+        for line in other_lines[-3:]:  # Last few lines often contain summary
+            if 'error' in line.lower() and 'found' in line.lower():
+                result_lines.append(line)
+                break
+        
+        return '\n'.join(result_lines)
+    
     def _initialize_session(self):
         """Initialize session components"""
         # Reset and initialize global instances
@@ -243,8 +456,18 @@ class DartAnalysisFixer:
             if len(current_analysis.errors) == 0:
                 break  # No more errors to fix
             
+            # Check for early exit conditions
+            current_error_messages = [str(error) for error in current_analysis.errors[:10]]
+            should_exit, exit_reason = self._should_exit_early(current_error_messages, attempt)
+            if should_exit:
+                if MONITORING_AVAILABLE:
+                    logger.info(LogCategory.ERROR_FIXING, f"Early exit: {exit_reason}",
+                               context={"session_id": self.session_id, "attempt": attempt})
+                break
+            
             attempts_made = attempt
-            self.logger.start_attempt(attempt, len(current_analysis.errors))
+            errors_before = len(current_analysis.errors)
+            self.logger.start_attempt(attempt, errors_before)
             
             if MONITORING_AVAILABLE:
                 logger.info(LogCategory.ERROR_FIXING, f"Starting fixing attempt {attempt}/{self.config.max_attempts}",
@@ -289,9 +512,30 @@ class DartAnalysisFixer:
                 # Check if we made progress
                 error_reduction = len(current_analysis.errors) - len(new_analysis.errors)
                 success = error_reduction > 0 or len(new_analysis.errors) == 0
+                errors_after = len(new_analysis.errors)
                 
-                self.logger.end_attempt(success, len(new_analysis.errors))
+                # Identify persistent errors (same error messages)
+                old_error_msgs = set(str(e) for e in current_analysis.errors[:10])
+                new_error_msgs = set(str(e) for e in new_analysis.errors[:10])
+                persistent_errors = list(old_error_msgs & new_error_msgs)
                 
+                # Track failed commands
+                failed_commands = [cmd for cmd, exec_result in zip(attempt_commands, []) 
+                                 if hasattr(exec_result, 'success') and not exec_result.success]
+                
+                # Create and store attempt memory
+                attempt_memory = self._create_attempt_memory(
+                    attempt=attempt,
+                    errors_before=errors_before,
+                    errors_after=errors_after,
+                    commands_failed=failed_commands,
+                    files_modified=fixes_result.get("files_modified", []),
+                    persistent_errors=persistent_errors,
+                    success=success
+                )
+                self.attempt_history.append(attempt_memory)
+                
+                self.logger.end_attempt(success, errors_after)
                 current_analysis = new_analysis
                 
                 # If no progress and we have diff data, consider stopping early
@@ -377,15 +621,19 @@ class DartAnalysisFixer:
                 fix_prompt_info = self.prompt_loader.get_prompt_info("Generate Fixed Files")
                 fix_prompt = fix_prompt_info["prompt"]
             
+            # Limit analysis output to most relevant errors (token efficiency)
+            limited_output = self._limit_analysis_output(analysis_result.output, max_errors=10)
+            
             # Prepare context for the prompt
             context = {
                 "project_path": str(self.project_path),
                 "attempt_number": attempt,
                 "max_attempts": self.config.max_attempts,
-                "analysis_output": analysis_result.output,
+                "analysis_output": limited_output,
                 "error_count": len(analysis_result.errors),
                 "warning_count": len(analysis_result.warnings),
-                "categorized_errors": self.dart_analyzer.categorize_errors(analysis_result.issues)
+                "categorized_errors": self.dart_analyzer.categorize_errors(analysis_result.issues),
+                "previous_attempts": self._get_relevant_history_context()
             }
             
             # Execute LLM request
@@ -424,16 +672,8 @@ class DartAnalysisFixer:
                     logger.debug(LogCategory.CODE_GENERATION, f"AI response for parsing: {response.text[:500]}...",
                                context={"session_id": self.session_id, "attempt": attempt})
                 
-                if JSON_UTILS_AVAILABLE:
-                    fix_data = safe_json_loads(response.text, "AI fix generation", default=None)
-                else:
-                    try:
-                        fix_data = json.loads(response.text.strip())
-                    except json.JSONDecodeError:
-                        if MONITORING_AVAILABLE:
-                            logger.warn(LogCategory.CODE_GENERATION, "Failed to parse AI response as JSON",
-                                      context={"session_id": self.session_id, "response_preview": response.text[:200]})
-                        fix_data = None
+                # Enhanced JSON parsing with fallback mechanisms
+                fix_data = self._parse_ai_response_json(response.text)
                 
                 # Check for both possible formats: "fixes" or "code_fixes"
                 fixes_to_apply = None

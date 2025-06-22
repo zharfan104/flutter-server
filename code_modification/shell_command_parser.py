@@ -90,8 +90,8 @@ class ShellCommandParser:
         matches = re.finditer(shell_pattern, ai_response, re.DOTALL | re.IGNORECASE)
         
         for match in matches:
-            description = match.group(1)  # Optional description attribute
-            command_text = match.group(2).strip()  # Command content
+            description = match.group(1) if match.group(1) else None  # Optional description attribute
+            command_text = match.group(2).strip() if match.group(2) else ""  # Command content
             
             # Skip empty commands
             if not command_text:
@@ -242,6 +242,10 @@ class ShellCommandParser:
             else:
                 command_parts = command
             
+            # Ensure we have a valid command
+            if not command_parts or not command_parts[0]:
+                raise ValueError("Empty command provided")
+            
             result = subprocess.run(
                 command_parts,
                 cwd=str(self.project_path),
@@ -379,8 +383,15 @@ _shell_parser = None
 def get_shell_command_parser(project_path: str, enable_execution: bool = True) -> ShellCommandParser:
     """Get or create the global shell command parser"""
     global _shell_parser
-    if (_shell_parser is None or 
-        str(_shell_parser.project_path) != project_path or 
-        _shell_parser.enable_execution != enable_execution):
+    try:
+        if (_shell_parser is None or 
+            str(getattr(_shell_parser, 'project_path', '')) != project_path or 
+            getattr(_shell_parser, 'enable_execution', None) != enable_execution):
+            _shell_parser = ShellCommandParser(project_path, enable_execution)
+        return _shell_parser
+    except Exception as e:
+        # If there's any error with the global instance, create a new one
+        if MONITORING_AVAILABLE:
+            logger.warn(LogCategory.SYSTEM, f"Error with global shell parser, creating new: {e}")
         _shell_parser = ShellCommandParser(project_path, enable_execution)
-    return _shell_parser
+        return _shell_parser

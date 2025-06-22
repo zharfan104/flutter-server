@@ -11,15 +11,26 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .code_modifier import CodeModificationService, ModificationRequest, ModificationResult
-from .dart_analysis import DartAnalysisService, AnalysisResult
+from .dart_analysis import DartAnalysisService, AnalysisResult, AnalysisIssue
 from .iterative_fixer import IterativeErrorFixer, FixingResult
 from .llm_executor import SimpleLLMExecutor
 
 # Import advanced logging and monitoring
-from utils.advanced_logger import logger, LogCategory, LogLevel, OperationTracker
-from utils.request_tracer import tracer, TraceContext, EventContext, TraceEventType
-from utils.performance_monitor import performance_monitor, TimingContext
-from utils.error_analyzer import error_analyzer, analyze_error
+try:
+    from utils.advanced_logger import logger, LogCategory, LogLevel, OperationTracker
+    from utils.request_tracer import tracer, TraceContext, EventContext, TraceEventType
+    from utils.performance_monitor import performance_monitor, TimingContext
+    from utils.error_analyzer import error_analyzer, analyze_error
+    MONITORING_AVAILABLE = True
+except ImportError:
+    MONITORING_AVAILABLE = False
+
+# Empty context manager for backward compatibility
+class EmptyContext:
+    def __enter__(self):
+        return self
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
 
 
 @dataclass
@@ -68,7 +79,11 @@ class BuildPipelineService:
             "max_fix_attempts": 16,
             "enable_hot_reload": True,
             "run_final_analysis": True,
-            "auto_fix_errors": True
+            "auto_fix_errors": True,
+            # Pre-hot-reload configurations
+            "pre_hot_reload_check": True,  # Enable pre-hot-reload analysis
+            "pre_fix_max_attempts": 3,     # Quick fix attempts before hot reload
+            "pre_fix_errors_only": True    # Only fix errors, skip warnings/info
         }
     
     def set_status_callback(self, callback: Callable[[str], None]):
@@ -184,6 +199,62 @@ class BuildPipelineService:
                     
                     self._update_status(f"✅ Code modifications completed: {modification_result.changes_summary}",
                                       context=modification_context)
+                
+                # Step 1.5: Pre-Hot-Reload Analysis (NEW)
+                if self.config["pre_hot_reload_check"]:
+                    with EventContext(trace_id, TraceEventType.PIPELINE_STEP, "pipeline", "pre_hot_reload_analysis") if MONITORING_AVAILABLE else EmptyContext():
+                        step = PipelineStep(name="Pre-Hot-Reload Analysis", status="running", start_time=time.time())
+                        steps.append(step)
+                        
+                        self._update_status("🔍 Checking for compilation errors before hot reload...",
+                                          context={"step": "pre_hot_reload_analysis", "trace_id": trace_id})
+                        
+                        pre_analysis_result = await self._execute_dart_analysis(errors_only=True)
+                        
+                        step.end_time = time.time()
+                        step.result = pre_analysis_result
+                        step.status = "completed"
+                        
+                        if pre_analysis_result.errors:
+                            error_count = len(pre_analysis_result.errors)
+                            self._update_status(f"⚠️ Found {error_count} compilation errors, fixing before hot reload...",
+                                              context={
+                                                  "step": "pre_hot_reload_analysis",
+                                                  "error_count": error_count,
+                                                  "trace_id": trace_id
+                                              })
+                            
+                            # Step 1.6: Pre-Hot-Reload Error Fixing (NEW)
+                            with EventContext(trace_id, TraceEventType.PIPELINE_STEP, "pipeline", "pre_hot_reload_fixing") if MONITORING_AVAILABLE else EmptyContext():
+                                step = PipelineStep(name="Pre-Hot-Reload Error Fixing", status="running", start_time=time.time())
+                                steps.append(step)
+                                
+                                self._update_status("🔧 Fixing compilation errors before hot reload...",
+                                                  context={"step": "pre_hot_reload_fixing", "trace_id": trace_id})
+                                
+                                pre_fixing_result = await self._execute_pre_hot_reload_fixing(pre_analysis_result.errors)
+                                
+                                step.end_time = time.time()
+                                step.result = pre_fixing_result
+                                step.status = "completed" if pre_fixing_result.success else "failed"
+                                
+                                if pre_fixing_result.success:
+                                    self._update_status("✅ Pre-hot-reload errors fixed successfully!",
+                                                      context={
+                                                          "step": "pre_hot_reload_fixing",
+                                                          "fixed_errors": pre_fixing_result.initial_errors - pre_fixing_result.final_errors,
+                                                          "trace_id": trace_id
+                                                      })
+                                else:
+                                    self._update_status(f"⚠️ {pre_fixing_result.final_errors} errors remain, hot reload may fail",
+                                                      context={
+                                                          "step": "pre_hot_reload_fixing",
+                                                          "remaining_errors": pre_fixing_result.final_errors,
+                                                          "trace_id": trace_id
+                                                      })
+                        else:
+                            self._update_status("✅ No compilation errors found, proceeding to hot reload",
+                                              context={"step": "pre_hot_reload_analysis", "trace_id": trace_id})
                 
                 # Step 2: Hot Reload (if enabled and Flutter manager available)
                 if self.config["enable_hot_reload"] and self.flutter_manager:
@@ -348,15 +419,32 @@ class BuildPipelineService:
             self._update_status(f"Hot reload error: {str(e)}")
             return False
     
-    async def _execute_dart_analysis(self) -> AnalysisResult:
+    async def _execute_dart_analysis(self, errors_only: bool = False) -> AnalysisResult:
         """Execute Dart analysis step"""
-        return self.dart_analyzer.run_analysis()
+        return self.dart_analyzer.run_analysis(errors_only=errors_only)
     
     async def _execute_error_fixing(self) -> FixingResult:
         """Execute iterative error fixing step"""
         return await self.error_fixer.fix_all_errors(
             max_attempts=self.config["max_fix_attempts"]
         )
+    
+    async def _execute_pre_hot_reload_fixing(self, errors: List[AnalysisIssue]) -> FixingResult:
+        """Execute quick pre-hot-reload error fixing for compilation errors only"""
+        with TimingContext("pre_hot_reload_fixing") if MONITORING_AVAILABLE else EmptyContext():
+            if MONITORING_AVAILABLE:
+                logger.info(LogCategory.PIPELINE, "Starting pre-hot-reload error fixing",
+                           context={
+                               "error_count": len(errors),
+                               "max_attempts": self.config["pre_fix_max_attempts"]
+                           })
+            
+            # Use the error fixer with reduced attempts for quick fixing
+            # Focus only on critical compilation errors
+            return await self.error_fixer.fix_all_errors(
+                max_attempts=self.config["pre_fix_max_attempts"],
+                errors_only=True  # Skip warnings/info
+            )
     
     def get_pipeline_summary(self, result: PipelineResult) -> Dict:
         """Generate a summary of the pipeline execution"""
@@ -386,6 +474,14 @@ class BuildPipelineService:
             summary["files_modified"] = len(result.modification_result.modified_files)
             summary["files_created"] = len(result.modification_result.created_files)
             summary["files_deleted"] = len(result.modification_result.deleted_files)
+        
+        # Check for pre-hot-reload fixing in steps
+        pre_hot_reload_steps = [s for s in result.steps if s.name == "Pre-Hot-Reload Error Fixing"]
+        if pre_hot_reload_steps:
+            pre_fix_step = pre_hot_reload_steps[0]
+            if pre_fix_step.result and hasattr(pre_fix_step.result, 'initial_errors'):
+                summary["pre_hot_reload_errors_fixed"] = pre_fix_step.result.initial_errors - pre_fix_step.result.final_errors
+                summary["pre_hot_reload_fix_attempts"] = pre_fix_step.result.total_attempts
         
         if result.fixing_result:
             summary["errors_fixed"] = result.fixing_result.initial_errors - result.fixing_result.final_errors
