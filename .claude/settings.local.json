@@ -23,7 +23,8 @@
       "Bash(python test:*)",
       "Bash(rm:*)",
       "Bash(sed:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(find:*)"
     ],
     "deny": []
   }

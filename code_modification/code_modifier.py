@@ -260,50 +260,37 @@ class CodeModificationService:
             
             response = self.llm_executor.execute(messages=messages)
             
-            # Parse the JSON response
-            try:
-                result = json.loads(response.text.strip())
-                
-                if isinstance(result, dict):
-                    directly_modified = set(result.get("directly_modified_files", []))
-                    all_relevant = set(result.get("all_relevant_files", []))
-                    to_create = result.get("files_to_create", [])
-                    to_delete = result.get("files_to_delete", [])
-                    
-                    # Always add lib/app.dart if it exists
-                    app_dart_path = "lib/app.dart"
-                    if (self.project_path / app_dart_path).exists():
-                        directly_modified.add(app_dart_path)
-                        all_relevant.add(app_dart_path)
-                    
-                    # Always include pubspec.yaml
-                    pubspec_path = "pubspec.yaml"
-                    if (self.project_path / pubspec_path).exists():
-                        all_relevant.add(pubspec_path)
-                    
-                    # Filter out files that are in existing_changes if provided
-                    if request.existing_changes:
-                        directly_modified = {f for f in directly_modified 
-                                           if not any(f in ec or ec in f for ec in request.existing_changes)}
-                        all_relevant = {f for f in all_relevant 
-                                      if not any(f in ec or ec in f for ec in request.existing_changes)}
-                        to_create = [f for f in to_create 
-                                   if not any(f in ec or ec in f for ec in request.existing_changes)]
-                    
-                    return directly_modified, all_relevant, to_create, to_delete
-                    
-                elif isinstance(result, list):
-                    # Backward compatibility with old format
-                    files_set = set(result)
-                    return files_set, files_set, [], []
-                else:
-                    print(f"Invalid response format: {response.text}")
-                    return set(), set(), [], []
-                    
-            except json.JSONDecodeError as e:
-                print(f"Failed to parse LLM response as JSON: {e}")
-                print(f"Response was: {response.text}")
-                return set(), set(), [], []
+            # Parse the JSON response using robust extraction
+            from .json_utils import extract_file_operations_from_response
+            result = extract_file_operations_from_response(response.text, "file operations analysis")
+            
+            # The extraction function returns validated data, so we can trust the format
+            directly_modified = set(result.get("directly_modified_files", []))
+            all_relevant = set(result.get("all_relevant_files", []))
+            to_create = result.get("files_to_create", [])
+            to_delete = result.get("files_to_delete", [])
+            
+            # Always add lib/app.dart if it exists
+            app_dart_path = "lib/app.dart"
+            if (self.project_path / app_dart_path).exists():
+                directly_modified.add(app_dart_path)
+                all_relevant.add(app_dart_path)
+            
+            # Always include pubspec.yaml
+            pubspec_path = "pubspec.yaml"
+            if (self.project_path / pubspec_path).exists():
+                all_relevant.add(pubspec_path)
+            
+            # Filter out files that are in existing_changes if provided
+            if request.existing_changes:
+                directly_modified = {f for f in directly_modified 
+                                   if not any(f in ec or ec in f for ec in request.existing_changes)}
+                all_relevant = {f for f in all_relevant 
+                              if not any(f in ec or ec in f for ec in request.existing_changes)}
+                to_create = [f for f in to_create 
+                           if not any(f in ec or ec in f for ec in request.existing_changes)]
+            
+            return directly_modified, all_relevant, to_create, to_delete
                 
         except Exception as e:
             print(f"Error determining relevant files: {e}")

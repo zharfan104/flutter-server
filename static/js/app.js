@@ -198,7 +198,7 @@ class FlutterDevServer {
         }
         
         // Method 2: Check Flutter server status via API
-        this.checkFlutterServerStatus();
+        // this.checkFlutterServerStatus();
         
         return false;
     }

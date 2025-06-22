@@ -124,25 +124,102 @@ class CodeEditor {
      */
     async loadFileTree() {
         try {
-            // For now, create a mock file tree
-            this.fileTree = [
-                { name: 'lib', type: 'folder', children: [
-                    { name: 'main.dart', type: 'file', path: 'lib/main.dart' },
-                    { name: 'models', type: 'folder', children: [
-                        { name: 'user.dart', type: 'file', path: 'lib/models/user.dart' }
-                    ]},
-                    { name: 'widgets', type: 'folder', children: [
-                        { name: 'custom_button.dart', type: 'file', path: 'lib/widgets/custom_button.dart' }
-                    ]}
-                ]},
-                { name: 'pubspec.yaml', type: 'file', path: 'pubspec.yaml' },
-                { name: 'README.md', type: 'file', path: 'README.md' }
-            ];
+            // Fetch real project structure from API
+            const response = await fetch('/api/project-structure');
+            const data = await response.json();
             
-            this.renderFileTree();
+            if (data.status === 'success') {
+                this.fileTree = this.transformProjectStructureToTree(data.project_structure);
+                this.renderFileTree();
+                console.log('File tree loaded successfully');
+            } else {
+                throw new Error(data.error || 'Failed to load project structure');
+            }
         } catch (error) {
             console.error('Failed to load file tree:', error);
+            this.log(`Error loading file tree: ${error.message}`);
+            
+            // Fallback to basic file tree
+            this.fileTree = this.getFallbackFileTree();
+            this.renderFileTree();
         }
+    }
+    
+    /**
+     * Transform project structure data into file tree format
+     */
+    transformProjectStructureToTree(projectStructure) {
+        const tree = [];
+        
+        // Add lib folder with actual file structure
+        const libStructure = projectStructure.file_structure || {};
+        const libFolder = {
+            name: 'lib',
+            type: 'folder',
+            children: this.buildLibChildren(libStructure)
+        };
+        tree.push(libFolder);
+        
+        // Add other important files that typically exist in Flutter projects
+        const commonFiles = [
+            { name: 'pubspec.yaml', type: 'file', path: 'pubspec.yaml' },
+            { name: 'pubspec.lock', type: 'file', path: 'pubspec.lock' },
+            { name: 'README.md', type: 'file', path: 'README.md' },
+            { name: 'analysis_options.yaml', type: 'file', path: 'analysis_options.yaml' }
+        ];
+        
+        // Only add files that actually exist (you could enhance this with a file existence check)
+        tree.push(...commonFiles);
+        
+        return tree;
+    }
+    
+    /**
+     * Build children nodes for lib folder from file structure
+     */
+    buildLibChildren(libStructure) {
+        const children = [];
+        
+        // Process each directory in lib structure
+        Object.entries(libStructure).forEach(([dirName, files]) => {
+            if (dirName === '.') {
+                // Root files in lib (like main.dart)
+                files.forEach(fileName => {
+                    children.push({
+                        name: fileName,
+                        type: 'file',
+                        path: `lib/${fileName}`
+                    });
+                });
+            } else {
+                // Subdirectory with files
+                const dirFiles = files.map(fileName => ({
+                    name: fileName,
+                    type: 'file',
+                    path: `lib/${dirName}/${fileName}`
+                }));
+                
+                children.push({
+                    name: dirName,
+                    type: 'folder',
+                    children: dirFiles
+                });
+            }
+        });
+        
+        return children;
+    }
+    
+    /**
+     * Get fallback file tree when API fails
+     */
+    getFallbackFileTree() {
+        return [
+            { name: 'lib', type: 'folder', children: [
+                { name: 'main.dart', type: 'file', path: 'lib/main.dart' }
+            ]},
+            { name: 'pubspec.yaml', type: 'file', path: 'pubspec.yaml' }
+        ];
     }
     
     /**
@@ -154,7 +231,8 @@ class CodeEditor {
         
         const renderNode = (node, level = 0) => {
             const indent = '  '.repeat(level);
-            const icon = node.type === 'folder' ? 'folder' : 'file-earmark-code';
+            // Initialize folders as expanded by default, show proper icon
+            const icon = node.type === 'folder' ? 'folder-open' : 'file-earmark-code';
             const className = node.type === 'folder' ? 'file-item folder' : 'file-item';
             
             let html = `<div class="${className}" data-path="${node.path || ''}" style="padding-left: ${level * 20 + 10}px;">
@@ -173,10 +251,44 @@ class CodeEditor {
         // Bind click events
         fileTreeElement.addEventListener('click', (e) => {
             const fileItem = e.target.closest('.file-item');
-            if (fileItem && fileItem.dataset.path) {
-                this.openFile(fileItem.dataset.path);
+            if (fileItem) {
+                if (fileItem.classList.contains('folder')) {
+                    // Toggle folder expansion
+                    this.toggleFolder(fileItem);
+                } else if (fileItem.dataset.path) {
+                    // Open file
+                    this.openFile(fileItem.dataset.path);
+                }
             }
         });
+    }
+    
+    /**
+     * Toggle folder expansion/collapse
+     */
+    toggleFolder(folderElement) {
+        const icon = folderElement.querySelector('i');
+        const nextElements = [];
+        let nextSibling = folderElement.nextElementSibling;
+        
+        // Find all child elements (they have higher padding-left)
+        const folderPadding = parseInt(folderElement.style.paddingLeft);
+        while (nextSibling && parseInt(nextSibling.style.paddingLeft) > folderPadding) {
+            nextElements.push(nextSibling);
+            nextSibling = nextSibling.nextElementSibling;
+        }
+        
+        // Toggle visibility and icon
+        const isExpanded = icon.classList.contains('bi-folder-open');
+        if (isExpanded) {
+            // Collapse
+            icon.className = 'bi bi-folder';
+            nextElements.forEach(el => el.style.display = 'none');
+        } else {
+            // Expand
+            icon.className = 'bi bi-folder-open';
+            nextElements.forEach(el => el.style.display = 'block');
+        }
     }
     
     /**
