@@ -39,6 +39,7 @@ class LogCategory(Enum):
     USER = "user"
     SYSTEM = "system"
     FLUTTER = "flutter"
+    CHAT = "chat"
 
 
 @dataclass

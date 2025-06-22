@@ -30,10 +30,11 @@ class FlutterDevServer {
      * Initialize periodic status updates
      */
     initStatusUpdates() {
-        this.updateStatus();
-        this.statusUpdateInterval = setInterval(() => {
-            this.updateStatus();
-        }, 10000); // Update every 10 seconds
+        this.updateStatus(); // Initial update only
+        console.log('Status polling disabled - manual refresh only');
+        // this.statusUpdateInterval = setInterval(() => {
+        //     this.updateStatus();
+        // }, 10000); // Update every 10 seconds
     }
     
     /**
@@ -1222,14 +1223,15 @@ function filterLogs() {
 
 // Enhanced logging integration with backend
 function initializeAdvancedLogging() {
-    // Periodically fetch advanced logs from backend
-    setInterval(async () => {
-        try {
-            await updateAdvancedLogs();
-        } catch (error) {
-            console.error('Failed to update advanced logs:', error);
-        }
-    }, 5000); // Update every 5 seconds
+    // Disabled auto-polling for logs - now refresh-only
+    console.log('Log polling disabled - refresh manually to update');
+    // setInterval(async () => {
+    //     try {
+    //         await updateAdvancedLogs();
+    //     } catch (error) {
+    //         console.error('Failed to update advanced logs:', error);
+    //     }
+    // }, 5000); // Update every 5 seconds
 }
 
 async function updateAdvancedLogs() {
@@ -1360,10 +1362,11 @@ function updatePerformanceMetrics() {
 }
 
 function initializePerformanceMonitoring() {
-    // Update performance metrics every 3 seconds
-    setInterval(updatePerformanceMetrics, 3000);
+    // Disabled auto-polling for performance metrics - manual refresh only
+    console.log('Performance metrics polling disabled - manual refresh only');
+    // setInterval(updatePerformanceMetrics, 3000);
     
-    // Initial update
+    // Initial update only
     updatePerformanceMetrics();
 }
 

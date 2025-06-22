@@ -370,19 +370,7 @@ class ChatManager {
         // This prevents sync issues between frontend and backend
         console.log('📊 User message added to UI, current lastMessageCount:', this.lastMessageCount);
         
-        // Show enhanced loading state
-        this.showProcessingIndicator();
-        
-        // Set a fallback timeout to hide the processing indicator if something goes wrong
-        // This prevents the UI from getting stuck forever
-        const fallbackTimeout = setTimeout(() => {
-            console.log('⚠️ Fallback timeout triggered - hiding processing indicator');
-            this.hideProcessingIndicator();
-            this.addSystemMessage('Request timed out. The AI might still be processing your request. Please check back in a moment.');
-        }, 60000); // 60 seconds timeout
-        
-        // Store timeout ID so we can clear it when response arrives
-        this.currentRequestTimeout = fallbackTimeout;
+        // Don't show processing indicator yet - wait for response to determine if needed
         
         try {
             const response = await fetch('/api/chat/send', {
@@ -400,11 +388,36 @@ class ChatManager {
             
             if (data.status === 'success') {
                 this.currentConversationId = data.conversation_id;
-                // Update to AI processing state
-                this.updateProcessingIndicator('AI is processing your request...');
                 
+                // Add immediate AI response to UI
+                const aiMessage = {
+                    role: 'assistant',
+                    content: data.message,
+                    formatted_time: new Date().toLocaleTimeString('en-US', { 
+                        hour12: false, 
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        second: '2-digit'
+                    }),
+                    timestamp: Date.now() / 1000,
+                    intent: data.intent
+                };
+                this.addMessageToUI(aiMessage);
                 
-                // AI response will be added via polling
+                // Show appropriate indicator based on intent
+                if (data.requires_code_modification) {
+                    this.showProcessingIndicator('🔧 Working on code changes...');
+                    console.log('🔧 Code modification started:', data.code_modification_request_id);
+                    
+                    // Set timeout for code modification to show completion message
+                    setTimeout(() => {
+                        this.hideProcessingIndicator();
+                    }, 30000); // Hide after 30 seconds
+                } else {
+                    // For questions and follow-ups, no additional processing needed
+                    console.log('💬 Conversation response completed');
+                }
+                
                 // Reset sending flag after successful send
                 this.isSending = false;
             } else {
@@ -418,12 +431,6 @@ class ChatManager {
             
             // Reset sending flag on error
             this.isSending = false;
-            
-            // Clear the timeout on error
-            if (this.currentRequestTimeout) {
-                clearTimeout(this.currentRequestTimeout);
-                this.currentRequestTimeout = null;
-            }
             
             // Restore the message to input on error
             messageInput.value = message;
@@ -497,6 +504,10 @@ class ChatManager {
     }
     
     startPolling() {
+        // Disabled auto-polling - chat updates are now immediate via new modular system
+        console.log('Chat polling disabled - using immediate response system');
+        return;
+        
         if (this.isPolling) return;
         
         this.isPolling = true;

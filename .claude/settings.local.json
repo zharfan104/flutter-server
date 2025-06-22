@@ -21,7 +21,9 @@
       "Bash(git commit:*)",
       "Bash(rg:*)",
       "Bash(python test:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(sed:*)",
+      "Bash(python:*)"
     ],
     "deny": []
   }

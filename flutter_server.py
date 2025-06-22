@@ -7,9 +7,27 @@ import asyncio
 from dataclasses import asdict
 from flask import Flask, request, jsonify, Response, send_from_directory, render_template
 from flask_cors import CORS
+import logging
 
 app = Flask(__name__)
 CORS(app)
+
+# Custom logging filter to hide non-API requests (like Flutter package requests)
+class APIOnlyFilter(logging.Filter):
+    def filter(self, record):
+        # Only show requests that start with /api/ or are error/warning messages
+        if hasattr(record, 'getMessage'):
+            message = record.getMessage()
+            # Hide successful requests that don't start with /api/
+            if '" 200 -' in message and '/api/' not in message:
+                return False
+            # Show error responses and API requests
+            return True
+        return True
+
+# Apply the filter to Werkzeug logger (Flask's request logger)
+werkzeug_logger = logging.getLogger('werkzeug')
+werkzeug_logger.addFilter(APIOnlyFilter())
 
 class FlutterManager:
     def __init__(self):
@@ -803,7 +821,7 @@ def get_modification_history():
 # Chat API endpoints
 @app.route('/api/chat/send', methods=['POST'])
 def chat_send_message():
-    """Send a message to AI chat and get response"""
+    """Send a message to AI chat and get response using the new modular chat service"""
     try:
         data = request.json
         message = data.get('message', '').strip()
@@ -812,164 +830,44 @@ def chat_send_message():
         if not message:
             return jsonify({"error": "Message cannot be empty"}), 400
         
-        # Get or create conversation
-        if not conversation_id:
-            conversation_id = chat_manager.get_or_create_default_conversation()
-        elif not chat_manager.get_conversation(conversation_id):
-            return jsonify({"error": "Conversation not found"}), 404
+        # Import and use the new chat service
+        from chat.chat_service import chat_service, ChatRequest
         
-        # Add user message
-        user_message = chat_manager.add_message(conversation_id, 'user', message)
+        # Set dependencies if not already set
+        chat_service.set_dependencies(flutter_manager=flutter_manager, chat_manager=chat_manager)
         
-        # Generate request ID for tracking
-        import uuid
-        request_id = str(uuid.uuid4())
+        # Create chat request
+        chat_request = ChatRequest(
+            message=message,
+            conversation_id=conversation_id
+        )
         
-        # Generate AI response in background thread
-        def generate_ai_response():
-            try:
-                from code_modification.llm_executor import SimpleLLMExecutor
-                from code_modification.project_analyzer import FlutterProjectAnalyzer
-                from code_modification.code_modifier import CodeModificationService, ModificationRequest
-                from utils.status_tracker import status_tracker
-                
-                # Initialize services
-                llm_executor = SimpleLLMExecutor()
-                if not llm_executor.is_available():
-                    ai_response = "I'm sorry, but I'm not properly configured with API keys. Please set up ANTHROPIC_API_KEY or OPENAI_API_KEY environment variables to enable AI chat functionality."
-                    chat_manager.add_message(conversation_id, 'assistant', ai_response)
-                    return
-                
-                # Get project context
-                project_analyzer = FlutterProjectAnalyzer(flutter_manager.project_path)
-                try:
-                    project_summary = project_analyzer.generate_project_summary()
-                    project_context = json.dumps(project_summary, indent=2)
-                except Exception as e:
-                    project_context = f"Error analyzing project: {str(e)}"
-                
-                # Get recent conversation history
-                recent_messages = chat_manager.get_messages(conversation_id, limit=10)
-                conversation_history = ""
-                for msg in recent_messages[:-1]:  # Exclude the current message
-                    conversation_history += f"{msg.role.title()}: {msg.content}\n\n"
-                
-                # Create system prompt for Flutter development assistance
-                system_prompt = f"""You are an expert Flutter development assistant. You help developers with their Flutter projects through conversational interface.
-
-Project Context:
-{project_context}
-
-Recent Conversation:
-{conversation_history}
-
-Your capabilities:
-1. Answer Flutter development questions
-2. Provide code suggestions and examples
-3. Help debug issues
-4. Recommend best practices and packages
-5. Analyze project structure
-6. Suggest improvements
-
-When the user asks for code changes or modifications:
-1. Acknowledge the request
-2. Explain what you're going to do
-3. Use the existing code modification system to make changes
-4. Confirm the changes were applied
-
-Be helpful, concise, and practical. Always consider the current project context when providing advice."""
-
-                # Determine if this requires code modification
-                modification_keywords = ['add', 'create', 'modify', 'change', 'update', 'fix', 'implement', 'build', 'make']
-                needs_modification = any(keyword in message.lower() for keyword in modification_keywords)
-                
-                if needs_modification and "don't" not in message.lower() and "how to" not in message.lower():
-                    # This looks like a code modification request - use the simple code modification system
-                    try:
-                        from code_modification.code_modifier import CodeModificationService, ModificationRequest
-                        
-                        logger.info(LogCategory.CODE_MOD, f"Starting code modification from chat: {message[:100]}...")
-                        
-                        # Use the simple code modification service
-                        modifier = CodeModificationService(flutter_manager.project_path)
-                        
-                        # Create modification request
-                        mod_request = ModificationRequest(
-                            description=message,
-                            request_id=request_id
-                        )
-                        
-                        # Execute modification
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        mod_result = loop.run_until_complete(modifier.modify_code(mod_request))
-                        
-                        if mod_result.success:
-                            ai_response = f"🎉 I've successfully implemented your request!\n\n"
-                            ai_response += f"**Changes Made:** {mod_result.changes_summary}\n\n"
-                            
-                            if mod_result.modified_files:
-                                ai_response += f"**Modified Files:** {', '.join(mod_result.modified_files)}\n"
-                            if mod_result.created_files:
-                                ai_response += f"**Created Files:** {', '.join(mod_result.created_files)}\n"
-                            if mod_result.deleted_files:
-                                ai_response += f"**Deleted Files:** {', '.join(mod_result.deleted_files)}\n"
-                            
-                            if flutter_manager.is_running:
-                                ai_response += "\n\n🔄 Hot reload was automatically triggered - you should see your changes live!"
-                            else:
-                                ai_response += "\n\nℹ️ Start your Flutter development server to see the changes."
-                            
-                            logger.info(LogCategory.CODE_MOD, f"Code modification completed successfully: {mod_result.changes_summary}")
-                        else:
-                            ai_response = f"❌ I encountered issues while implementing your request:\n\n"
-                            if mod_result.errors:
-                                ai_response += f"**Errors:** {', '.join(mod_result.errors)}\n\n"
-                            
-                            # Provide fallback guidance
-                            ai_response += "Let me provide some guidance instead:\n\n"
-                            messages = [{"role": "user", "content": f"The user asked: {message}\n\nProvide helpful guidance about how to implement this in Flutter."}]
-                            response = llm_executor.execute(messages=messages, system_prompt=system_prompt)
-                            ai_response += response.text
-                            
-                            logger.warn(LogCategory.CODE_MOD, f"Code modification failed: {', '.join(mod_result.errors)}")
-                    
-                    except Exception as e:
-                        print(f"Error in code modification: {e}")
-                        logger.error(LogCategory.CODE_MOD, f"Code modification error: {str(e)}")
-                        
-                        ai_response = f"I had trouble modifying the code directly, but I can still help you with guidance!\n\n"
-                        
-                        # Fall back to providing advice
-                        messages = [{"role": "user", "content": message}]
-                        response = llm_executor.execute(messages=messages, system_prompt=system_prompt)
-                        ai_response += response.text
-                
-                else:
-                    # Regular conversation - provide advice and guidance
-                    messages = [{"role": "user", "content": message}]
-                    response = llm_executor.execute(messages=messages, system_prompt=system_prompt)
-                    ai_response = response.text
-                
-                # Add AI response to conversation
-                chat_manager.add_message(conversation_id, 'assistant', ai_response)
-                
-            except Exception as e:
-                print(f"Error generating AI response: {e}")
-                error_response = f"I'm sorry, I encountered an error while processing your request: {str(e)}"
-                chat_manager.add_message(conversation_id, 'assistant', error_response)
+        # Handle the message using the modular chat service
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         
-        # Start AI response generation in background
-        thread = threading.Thread(target=generate_ai_response, daemon=True)
-        thread.start()
+        try:
+            chat_response = loop.run_until_complete(chat_service.handle_message(chat_request))
+        finally:
+            loop.close()
         
-        return jsonify({
+        # Return immediate response with intent information
+        response_data = {
             "status": "success",
-            "message": "Message sent, AI is processing...",
-            "conversation_id": conversation_id,
-            "request_id": request_id,
-            "user_message": user_message.to_dict()
-        })
+            "conversation_id": chat_response.conversation_id,
+            "message": chat_response.message,
+            "intent": chat_response.intent.value,
+            "requires_code_modification": chat_response.requires_code_modification
+        }
+        
+        if chat_response.code_modification_request_id:
+            response_data["code_modification_request_id"] = chat_response.code_modification_request_id
+        
+        if chat_response.metadata:
+            response_data["metadata"] = chat_response.metadata
+        
+        return jsonify(response_data)
         
     except Exception as e:
         return jsonify({"error": f"Failed to send message: {str(e)}"}), 500
