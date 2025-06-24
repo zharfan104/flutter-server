@@ -228,6 +228,22 @@
     transition: height 0.2s ease;
 }
 
+/* Streaming message cursor */
+.typing-cursor {
+    color: #007bff;
+    font-weight: normal;
+    margin-left: 2px;
+}
+
+@keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+}
+
+.streaming-message .message-content {
+    position: relative;
+}
+
 #message-input:disabled {
     background-color: #f8f9fa;
     opacity: 0.7;

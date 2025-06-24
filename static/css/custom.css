@@ -358,3 +358,29 @@ body {
 .h-600 {
     height: 600px;
 }
+
+/* Typing cursor animation */
+.typing-cursor {
+    animation: blink 1s infinite;
+    font-weight: bold;
+    color: #0d6efd;
+}
+
+@keyframes blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+}
+
+/* AI preview code block */
+#ai-preview pre {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    padding: 10px;
+    border-radius: 4px;
+    overflow-x: auto;
+}
+
+#ai-preview code {
+    font-family: 'Courier New', Consolas, monospace;
+    font-size: 0.85rem;
+}

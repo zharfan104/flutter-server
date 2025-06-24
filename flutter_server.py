@@ -770,6 +770,293 @@ def get_modification_status(request_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/stream/modify-code', methods=['POST'])
+def modify_code_stream():
+    """Stream code modifications using Server-Sent Events"""
+    try:
+        from code_modification.code_modifier import CodeModificationService, ModificationRequest
+        import uuid
+        import asyncio
+        import json
+        
+        data = request.json
+        description = data.get('description', '')
+        target_files = data.get('target_files')
+        user_id = data.get('user_id', 'anonymous')
+        
+        if not description:
+            return jsonify({"error": "Description is required"}), 400
+        
+        # Create modification request
+        request_id = str(uuid.uuid4())
+        modification_request = ModificationRequest(
+            description=description,
+            target_files=target_files,
+            user_id=user_id,
+            request_id=request_id
+        )
+        
+        def generate_sse_stream():
+            """Generator function for SSE stream"""
+            try:
+                # Send initial connection event
+                yield f"event: connected\ndata: {json.dumps({'request_id': request_id, 'message': 'Connected to streaming service'})}\n\n"
+                
+                # Initialize code modification service
+                code_modifier = CodeModificationService(flutter_manager.project_path)
+                
+                # Create async event loop for streaming
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                async def stream_modification():
+                    try:
+                        # Use the new streaming method (we'll add this next)
+                        async for event in code_modifier.modify_code_stream(modification_request):
+                            if hasattr(event, 'to_dict'):
+                                # StreamProgress object
+                                yield f"event: progress\ndata: {json.dumps(event.to_dict())}\n\n"
+                            elif isinstance(event, dict):
+                                # Status update
+                                if 'event_type' in event:
+                                    yield f"event: {event['event_type']}\ndata: {json.dumps(event)}\n\n"
+                                else:
+                                    yield f"event: update\ndata: {json.dumps(event)}\n\n"
+                            elif isinstance(event, str):
+                                # Text chunk
+                                yield f"event: text\ndata: {json.dumps({'text': event})}\n\n"
+                    
+                    except Exception as e:
+                        error_data = {
+                            'error': str(e),
+                            'stage': 'error',
+                            'message': f'Streaming failed: {str(e)}'
+                        }
+                        yield f"event: error\ndata: {json.dumps(error_data)}\n\n"
+                    
+                    finally:
+                        # Send completion event
+                        yield f"event: complete\ndata: {json.dumps({'message': 'Stream ended'})}\n\n"
+                
+                # Run the async streaming
+                async_gen = stream_modification()
+                
+                try:
+                    while True:
+                        chunk = loop.run_until_complete(async_gen.__anext__())
+                        yield chunk
+                except StopAsyncIteration:
+                    pass
+                finally:
+                    loop.close()
+                    
+            except Exception as e:
+                error_data = {
+                    'error': str(e),
+                    'stage': 'error',
+                    'message': f'Failed to start streaming: {str(e)}'
+                }
+                yield f"event: error\ndata: {json.dumps(error_data)}\n\n"
+        
+        # Return SSE response
+        return Response(
+            generate_sse_stream(),
+            mimetype='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Cache-Control'
+            }
+        )
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to start streaming: {str(e)}"}), 500
+
+@app.route('/api/stream/chat', methods=['POST'])
+def chat_stream():
+    """Stream chat responses using Server-Sent Events"""
+    try:
+        from chat.chat_service import ChatService, ChatRequest
+        import uuid
+        import asyncio
+        import json
+        
+        data = request.json
+        message = data.get('message', '')
+        conversation_id = data.get('conversation_id')
+        user_id = data.get('user_id', 'anonymous')
+        
+        if not message:
+            return jsonify({"error": "Message is required"}), 400
+        
+        def generate_chat_sse_stream():
+            """Generator function for chat SSE stream"""
+            try:
+                # Send initial connection event
+                yield f"event: connected\ndata: {json.dumps({'message': 'Connected to chat stream'})}\n\n"
+                
+                # Initialize chat service
+                chat_service = ChatService(flutter_manager, chat_manager)
+                
+                # Create chat request
+                chat_request = ChatRequest(
+                    message=message,
+                    conversation_id=conversation_id,
+                    user_id=user_id
+                )
+                
+                # Create async event loop for streaming
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                async def stream_chat():
+                    try:
+                        # Use the new streaming method (we'll add this next)
+                        async for event in chat_service.handle_message_stream(chat_request):
+                            if hasattr(event, 'to_dict'):
+                                # StreamProgress object
+                                yield f"event: progress\ndata: {json.dumps(event.to_dict())}\n\n"
+                            elif isinstance(event, dict):
+                                # Chat response or status update
+                                event_type = event.get('event_type', 'chat')
+                                yield f"event: {event_type}\ndata: {json.dumps(event)}\n\n"
+                            elif isinstance(event, str):
+                                # Text chunk
+                                yield f"event: text\ndata: {json.dumps({'text': event})}\n\n"
+                    
+                    except Exception as e:
+                        error_data = {
+                            'error': str(e),
+                            'stage': 'error',
+                            'message': f'Chat streaming failed: {str(e)}'
+                        }
+                        yield f"event: error\ndata: {json.dumps(error_data)}\n\n"
+                    
+                    finally:
+                        # Send completion event
+                        yield f"event: complete\ndata: {json.dumps({'message': 'Chat stream ended'})}\n\n"
+                
+                # Run the async streaming
+                async_gen = stream_chat()
+                
+                try:
+                    while True:
+                        chunk = loop.run_until_complete(async_gen.__anext__())
+                        yield chunk
+                except StopAsyncIteration:
+                    pass
+                finally:
+                    loop.close()
+                    
+            except Exception as e:
+                error_data = {
+                    'error': str(e),
+                    'stage': 'error',
+                    'message': f'Failed to start chat streaming: {str(e)}'
+                }
+                yield f"event: error\ndata: {json.dumps(error_data)}\n\n"
+        
+        # Return SSE response
+        return Response(
+            generate_chat_sse_stream(),
+            mimetype='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Cache-Control'
+            }
+        )
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to start chat streaming: {str(e)}"}), 500
+
+@app.route('/streaming-demo')
+def streaming_demo():
+    """Demo page for streaming functionality"""
+    return render_template('streaming_demo.html')
+
+@app.route('/api/stream/demo', methods=['GET'])
+def stream_demo():
+    """Demo SSE stream for testing"""
+    import json
+    import time
+    
+    def generate_demo_stream():
+        """Generate demo streaming events"""
+        try:
+            # Initial connection
+            yield f"event: connected\ndata: {json.dumps({'message': 'Connected to demo stream'})}\n\n"
+            time.sleep(0.5)
+            
+            # Progress events
+            stages = [
+                ("analyzing", "Analyzing project structure...", 10),
+                ("analyzing", "Determining files to modify...", 25),
+                ("generating", "AI is generating code for main.dart...", 40),
+                ("generating", "AI is creating widget.dart...", 60),
+                ("applying", "Writing files to disk...", 80),
+                ("complete", "Code generation completed!", 100)
+            ]
+            
+            for stage, message, progress in stages:
+                event_data = {
+                    "stage": stage,
+                    "message": message,
+                    "progress_percent": progress,
+                    "metadata": {
+                        "timestamp": time.time(),
+                        "demo": True
+                    }
+                }
+                
+                # Add partial content for generation stages
+                if stage == "generating":
+                    event_data["partial_content"] = f"""
+class MyWidget extends StatelessWidget {{
+  @override
+  Widget build(BuildContext context) {{
+    return Container(
+      child: Text('Generated at {progress}%'),
+    );
+  }}
+}}"""
+                
+                yield f"event: progress\ndata: {json.dumps(event_data)}\n\n"
+                time.sleep(1)  # Simulate processing time
+            
+            # Final result
+            result_data = {
+                "event_type": "result",
+                "success": True,
+                "modified_files": ["lib/main.dart", "lib/widget.dart"],
+                "created_files": ["lib/new_feature.dart"],
+                "message": "Successfully generated 3 files"
+            }
+            yield f"event: result\ndata: {json.dumps(result_data)}\n\n"
+            
+            # Complete event
+            yield f"event: complete\ndata: {json.dumps({'message': 'Demo stream ended'})}\n\n"
+            
+        except Exception as e:
+            error_data = {
+                'error': str(e),
+                'stage': 'error',
+                'message': f'Demo failed: {str(e)}'
+            }
+            yield f"event: error\ndata: {json.dumps(error_data)}\n\n"
+    
+    return Response(
+        generate_demo_stream(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*'
+        }
+    )
+
 @app.route('/api/analyze-project', methods=['POST'])
 def analyze_project_structure():
     """Analyze Flutter project structure"""

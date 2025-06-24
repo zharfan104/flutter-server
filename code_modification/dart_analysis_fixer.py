@@ -198,6 +198,369 @@ class DartAnalysisFixer:
             
             return self._create_error_result(error_msg, start_time)
     
+    async def fix_all_errors_stream(self, target_path: Optional[str] = None):
+        """
+        Stream error fixing process with real-time progress updates
+        
+        Args:
+            target_path: Specific path to analyze (defaults to lib/)
+            
+        Yields:
+            StreamProgress objects with fixing progress and results
+        """
+        from .llm_executor import StreamProgress
+        
+        start_time = time.time()
+        
+        # Initialize session components
+        self._initialize_session()
+        
+        try:
+            # Initial progress
+            yield StreamProgress(
+                stage="analyzing",
+                message="Starting Dart error analysis...",
+                progress_percent=0.0,
+                metadata={"session_id": self.session_id}
+            )
+            
+            # Step 1: Initial analysis
+            yield StreamProgress(
+                stage="analyzing",
+                message="Running initial Dart analysis...",
+                progress_percent=10.0
+            )
+            
+            initial_analysis = await self._run_initial_analysis(target_path)
+            if not initial_analysis:
+                yield StreamProgress(
+                    stage="error",
+                    message="Failed to run initial analysis",
+                    progress_percent=0.0
+                )
+                return
+            
+            initial_error_count = len(initial_analysis.errors)
+            self.logger.log_recovery_start(initial_error_count)
+            
+            yield StreamProgress(
+                stage="analyzing",
+                message=f"Found {initial_error_count} errors to fix",
+                progress_percent=20.0,
+                metadata={"initial_errors": initial_error_count}
+            )
+            
+            if initial_error_count == 0:
+                yield StreamProgress(
+                    stage="complete",
+                    message="No errors found - project is healthy!",
+                    progress_percent=100.0,
+                    metadata={"success": True, "errors_fixed": 0}
+                )
+                return
+            
+            # Step 1.5: Quick typo fixing
+            yield StreamProgress(
+                stage="analyzing",
+                message="Checking for quick typo fixes...",
+                progress_percent=25.0
+            )
+            
+            typo_fixes_applied = await self._apply_quick_typo_fixes(initial_analysis, target_path)
+            
+            if typo_fixes_applied > 0:
+                yield StreamProgress(
+                    stage="analyzing",
+                    message=f"Applied {typo_fixes_applied} typo fixes, re-analyzing...",
+                    progress_percent=30.0,
+                    metadata={"typo_fixes": typo_fixes_applied}
+                )
+                
+                post_typo_analysis = await self._run_dart_analysis(target_path)
+                if post_typo_analysis and len(post_typo_analysis.errors) < initial_error_count:
+                    initial_analysis = post_typo_analysis
+                    yield StreamProgress(
+                        stage="analyzing",
+                        message=f"Typo fixes reduced errors to {len(initial_analysis.errors)}",
+                        progress_percent=35.0,
+                        metadata={"errors_after_typos": len(initial_analysis.errors)}
+                    )
+            
+            # Step 2: Iterative fixing with streaming
+            yield StreamProgress(
+                stage="generating",
+                message="Starting AI-powered error fixing...",
+                progress_percent=40.0
+            )
+            
+            async for progress in self._iterative_fixing_loop_stream(initial_analysis, target_path):
+                yield progress
+            
+            # Step 3: Final validation
+            yield StreamProgress(
+                stage="validating",
+                message="Running final validation...",
+                progress_percent=90.0
+            )
+            
+            final_analysis = await self._run_final_validation(target_path)
+            final_error_count = len(final_analysis.errors) if final_analysis else initial_error_count
+            
+            # Complete session logging
+            success = final_error_count == 0
+            self.logger.log_recovery_end(success, final_error_count)
+            
+            total_duration = time.time() - start_time
+            errors_fixed = initial_error_count - final_error_count
+            
+            yield StreamProgress(
+                stage="complete" if success else "partial",
+                message=f"Error fixing completed! Fixed {errors_fixed} of {initial_error_count} errors" if success else f"Fixed {errors_fixed} errors, {final_error_count} remaining",
+                progress_percent=100.0,
+                metadata={
+                    "success": success,
+                    "initial_errors": initial_error_count,
+                    "final_errors": final_error_count,
+                    "errors_fixed": errors_fixed,
+                    "duration": total_duration,
+                    "session_id": self.session_id
+                }
+            )
+            
+            # Send final result as structured event
+            yield {
+                "event_type": "result",
+                "success": success,
+                "initial_error_count": initial_error_count,
+                "final_error_count": final_error_count,
+                "errors_fixed": errors_fixed,
+                "duration": total_duration,
+                "session_id": self.session_id
+            }
+            
+        except Exception as e:
+            error_msg = f"Unexpected error during fixing: {str(e)}"
+            self.logger.log_recovery_end(False, error_message=error_msg)
+            
+            yield StreamProgress(
+                stage="error",
+                message=error_msg,
+                progress_percent=0.0,
+                metadata={"error": str(e), "session_id": self.session_id}
+            )
+    
+    async def _iterative_fixing_loop_stream(self, initial_analysis: AnalysisResult, 
+                                          target_path: Optional[str] = None):
+        """Stream the iterative fixing loop with progress updates"""
+        from .llm_executor import StreamProgress
+        
+        current_analysis = initial_analysis
+        attempts_made = 0
+        
+        for attempt in range(1, self.config.max_attempts + 1):
+            if len(current_analysis.errors) == 0:
+                break  # No more errors to fix
+            
+            # Check for early exit conditions
+            current_error_messages = [str(error) for error in current_analysis.errors[:10]]
+            should_exit, exit_reason = self._should_exit_early(current_error_messages, attempt)
+            if should_exit:
+                yield StreamProgress(
+                    stage="generating",
+                    message=f"Early exit: {exit_reason}",
+                    progress_percent=40.0 + (attempt / self.config.max_attempts) * 45.0,
+                    metadata={"attempt": attempt, "exit_reason": exit_reason}
+                )
+                break
+            
+            attempts_made = attempt
+            errors_before = len(current_analysis.errors)
+            
+            yield StreamProgress(
+                stage="generating",
+                message=f"Attempt {attempt}/{self.config.max_attempts}: Fixing {errors_before} errors...",
+                progress_percent=40.0 + (attempt / self.config.max_attempts) * 45.0,
+                metadata={"attempt": attempt, "errors_before": errors_before}
+            )
+            
+            try:
+                # Step 1: Execute helpful commands
+                if self.config.enable_commands:
+                    yield StreamProgress(
+                        stage="generating",
+                        message=f"Attempt {attempt}: Running helpful commands...",
+                        progress_percent=40.0 + (attempt / self.config.max_attempts) * 45.0 + 5.0
+                    )
+                    
+                    commands_result = await self._execute_helpful_commands(current_analysis)
+                    attempt_commands = commands_result["commands_executed"]
+                    
+                    if attempt_commands:
+                        yield StreamProgress(
+                            stage="generating",
+                            message=f"Attempt {attempt}: Executed {len(attempt_commands)} commands",
+                            progress_percent=40.0 + (attempt / self.config.max_attempts) * 45.0 + 10.0,
+                            metadata={"commands_executed": attempt_commands}
+                        )
+                
+                # Step 2: Apply AI-generated fixes with streaming
+                yield StreamProgress(
+                    stage="generating", 
+                    message=f"Attempt {attempt}: AI is generating fixes...",
+                    progress_percent=40.0 + (attempt / self.config.max_attempts) * 45.0 + 15.0
+                )
+                
+                async for ai_progress in self._apply_ai_fixes_stream(current_analysis, attempt):
+                    yield ai_progress
+                
+                # Get the actual fixes result
+                fixes_result = await self._apply_ai_fixes(current_analysis, attempt)
+                
+                # Step 3: Re-analyze
+                yield StreamProgress(
+                    stage="generating",
+                    message=f"Attempt {attempt}: Re-analyzing after fixes...",
+                    progress_percent=40.0 + (attempt / self.config.max_attempts) * 45.0 + 35.0
+                )
+                
+                new_analysis = self.dart_analyzer.run_analysis(target_path)
+                
+                if new_analysis.success or new_analysis.errors:
+                    errors_after = len(new_analysis.errors)
+                    error_reduction = errors_before - errors_after
+                    
+                    yield StreamProgress(
+                        stage="generating",
+                        message=f"Attempt {attempt}: Reduced errors by {error_reduction} ({errors_before} → {errors_after})",
+                        progress_percent=40.0 + (attempt / self.config.max_attempts) * 45.0 + 40.0,
+                        metadata={
+                            "attempt": attempt,
+                            "errors_before": errors_before,
+                            "errors_after": errors_after,
+                            "error_reduction": error_reduction
+                        }
+                    )
+                    
+                    # Update tracking with attempt memory
+                    old_error_msgs = set(str(e) for e in current_analysis.errors[:10])
+                    new_error_msgs = set(str(e) for e in new_analysis.errors[:10])
+                    persistent_errors = list(old_error_msgs & new_error_msgs)
+                    
+                    success = error_reduction > 0 or errors_after == 0
+                    attempt_memory = self._create_attempt_memory(
+                        attempt=attempt,
+                        errors_before=errors_before,
+                        errors_after=errors_after,
+                        commands_failed=[],  # Would need to track this properly
+                        files_modified=fixes_result.get("files_modified", []),
+                        persistent_errors=persistent_errors,
+                        success=success
+                    )
+                    self.attempt_history.append(attempt_memory)
+                    
+                    current_analysis = new_analysis
+                else:
+                    yield StreamProgress(
+                        stage="generating",
+                        message=f"Attempt {attempt}: Analysis failed, retrying...",
+                        progress_percent=40.0 + (attempt / self.config.max_attempts) * 45.0 + 20.0,
+                        metadata={"attempt": attempt, "analysis_failed": True}
+                    )
+                
+            except Exception as e:
+                yield StreamProgress(
+                    stage="error",
+                    message=f"Attempt {attempt} failed: {str(e)}",
+                    progress_percent=40.0 + (attempt / self.config.max_attempts) * 45.0,
+                    metadata={"attempt": attempt, "error": str(e)}
+                )
+                continue
+    
+    async def _apply_ai_fixes_stream(self, analysis_result: AnalysisResult, attempt: int):
+        """Stream the AI fix generation process"""
+        from .llm_executor import StreamProgress
+        
+        yield StreamProgress(
+            stage="generating",
+            message="Preparing context for AI...",
+            progress_percent=45.0,
+            metadata={"attempt": attempt}
+        )
+        
+        try:
+            # Load the comprehensive fixing prompt
+            try:
+                fix_prompt_info = self.prompt_loader.get_prompt_info("Dart Analysis Command Fixer")
+                fix_prompt = fix_prompt_info["prompt"]
+            except KeyError:
+                fix_prompt_info = self.prompt_loader.get_prompt_info("Generate Fixed Files")
+                fix_prompt = fix_prompt_info["prompt"]
+            
+            # Limit analysis output to most relevant errors (token efficiency)
+            limited_output = self._limit_analysis_output(analysis_result.output, max_errors=10)
+            
+            # Prepare context for the prompt
+            context = {
+                "project_path": str(self.project_path),
+                "attempt_number": attempt,
+                "max_attempts": self.config.max_attempts,
+                "analysis_output": limited_output,
+                "error_count": len(analysis_result.errors),
+                "warning_count": len(analysis_result.warnings),
+                "categorized_errors": self.dart_analyzer.categorize_errors(analysis_result.issues),
+                "previous_attempts": self._get_relevant_history_context()
+            }
+            
+            yield StreamProgress(
+                stage="generating",
+                message="AI is analyzing errors and generating fixes...",
+                progress_percent=50.0,
+                metadata={"attempt": attempt, "errors_to_fix": len(analysis_result.errors)}
+            )
+            
+            # Execute LLM request with streaming
+            messages = [{"role": "user", "content": fix_prompt.format(**context)}]
+            
+            accumulated_text = ""
+            async for event in self.llm_executor.execute_stream_with_progress(messages):
+                if hasattr(event, 'to_dict'):
+                    # Forward StreamProgress objects with context
+                    progress = event
+                    progress.metadata = progress.metadata or {}
+                    progress.metadata.update({
+                        "attempt": attempt,
+                        "fixing_stage": "ai_generation"
+                    })
+                    yield progress
+                elif isinstance(event, str):
+                    accumulated_text += event
+                    # Show partial content as it streams
+                    yield StreamProgress(
+                        stage="generating",
+                        message="AI is writing fix code...",
+                        progress_percent=55.0,
+                        partial_content=accumulated_text[-200:],  # Last 200 chars
+                        metadata={
+                            "attempt": attempt,
+                            "text_length": len(accumulated_text)
+                        }
+                    )
+            
+            yield StreamProgress(
+                stage="generating",
+                message="AI completed generating fixes, parsing results...",
+                progress_percent=65.0,
+                metadata={"attempt": attempt, "response_length": len(accumulated_text)}
+            )
+            
+        except Exception as e:
+            yield StreamProgress(
+                stage="error",
+                message=f"AI fix generation failed: {str(e)}",
+                progress_percent=0.0,
+                metadata={"attempt": attempt, "error": str(e)}
+            )
+    
     def _create_attempt_memory(self, attempt: int, errors_before: int, errors_after: int, 
                              commands_failed: List[str], files_modified: List[str], 
                              persistent_errors: List[str], success: bool) -> AttemptMemory:

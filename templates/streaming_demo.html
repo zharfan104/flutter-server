@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+
+{% block title %}Streaming AI Code Generation Demo{% endblock %}
+
+{% block extra_head %}
+    <style>
+        .typing-cursor {
+            animation: blink 1s infinite;
+            font-weight: bold;
+            color: #0d6efd;
+        }
+        
+        @keyframes blink {
+            0%, 49% { opacity: 1; }
+            50%, 100% { opacity: 0; }
+        }
+        
+        #preview pre {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            min-height: 200px;
+            font-family: 'Courier New', Consolas, monospace;
+            font-size: 0.9rem;
+        }
+        
+        #log {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 8px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.85rem;
+        }
+        
+        .log-entry {
+            margin-bottom: 5px;
+        }
+        
+        .log-time {
+            color: #6c757d;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <div class="container-fluid">
+        <h1 class="mb-4">Streaming AI Code Generation</h1>
+        
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Request Code Modification</h5>
+                <div class="mb-3">
+                    <textarea class="form-control" id="description" rows="3" placeholder="Describe what you want to build...">Add a user profile screen with name, email, and avatar fields</textarea>
+                </div>
+                <button class="btn btn-primary" id="startBtn" onclick="startStreaming()">
+                    Start Streaming Generation
+                </button>
+                <button class="btn btn-danger" id="stopBtn" onclick="stopStreaming()" style="display: none;">
+                    Stop
+                </button>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">Progress Log</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="progress mb-3">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 id="progressBar" style="width: 0%"></div>
+                        </div>
+                        <div id="log"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">Live Code Preview</h6>
+                    </div>
+                    <div class="card-body">
+                        <div id="currentFile" class="text-muted mb-2">Waiting to start...</div>
+                        <div id="preview">
+                            <pre><code id="codePreview"></code></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_scripts %}
+    <script>
+        let currentRequest = null;
+        
+        function log(message, type = 'info') {
+            const logEl = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            
+            let icon = '●';
+            let color = 'text-info';
+            if (type === 'success') {
+                icon = '✓';
+                color = 'text-success';
+            } else if (type === 'error') {
+                icon = '✗';
+                color = 'text-danger';
+            } else if (type === 'warning') {
+                icon = '⚠';
+                color = 'text-warning';
+            }
+            
+            entry.innerHTML = `<span class="log-time">[${time}]</span> <span class="${color}">${icon}</span> ${message}`;
+            logEl.appendChild(entry);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+        
+        function updateProgress(percent, message) {
+            const progressBar = document.getElementById('progressBar');
+            progressBar.style.width = percent + '%';
+            if (message) {
+                log(message);
+            }
+        }
+        
+        function updateCodePreview(fileName, content) {
+            document.getElementById('currentFile').textContent = fileName || 'Generating...';
+            const codeEl = document.getElementById('codePreview');
+            // Replace \n with actual line breaks after escaping HTML
+            const formattedContent = escapeHtml(content).replace(/\\n/g, '\n');
+            codeEl.innerHTML = formattedContent + '<span class="typing-cursor">▋</span>';
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        async function startStreaming() {
+            const description = document.getElementById('description').value.trim();
+            if (!description) {
+                alert('Please enter a description');
+                return;
+            }
+            
+            // UI state
+            document.getElementById('startBtn').style.display = 'none';
+            document.getElementById('stopBtn').style.display = 'inline-block';
+            document.getElementById('log').innerHTML = '';
+            document.getElementById('codePreview').innerHTML = '';
+            
+            log('Starting streaming code generation...', 'info');
+            
+            try {
+                const response = await fetch('/api/stream/modify-code', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        description: description,
+                        user_id: 'demo_user'
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let currentFile = null;
+                let accumulatedContent = '';
+                
+                currentRequest = { reader, active: true };
+                
+                while (currentRequest.active) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data:')) {
+                            const dataStr = line.substring(5).trim();
+                            if (!dataStr) continue;
+                            
+                            try {
+                                const data = JSON.parse(dataStr);
+                                
+                                if (data.stage) {
+                                    // Progress update
+                                    updateProgress(data.progress_percent || 0, data.message);
+                                    
+                                    if (data.metadata) {
+                                        if (data.metadata.current_file !== currentFile) {
+                                            currentFile = data.metadata.current_file;
+                                            accumulatedContent = '';
+                                        }
+                                        
+                                        // Handle chunk from metadata
+                                        if (data.metadata.chunk) {
+                                            accumulatedContent += data.metadata.chunk;
+                                            updateCodePreview(currentFile, accumulatedContent);
+                                        }
+                                    }
+                                    
+                                    // Handle partial_content from StreamProgress
+                                    if (data.partial_content && data.metadata && data.metadata.current_file) {
+                                        updateCodePreview(data.metadata.current_file, data.partial_content);
+                                    }
+                                    
+                                    if (data.stage === 'complete') {
+                                        log('Code generation completed!', 'success');
+                                    } else if (data.stage === 'error') {
+                                        log(data.message, 'error');
+                                    }
+                                } else if (data.text) {
+                                    // Raw text chunk
+                                    accumulatedContent += data.text;
+                                    updateCodePreview(currentFile, accumulatedContent);
+                                } else if (data.event_type === 'result') {
+                                    // Final result
+                                    log(`Modified ${data.modified_files.length} files`, 'success');
+                                    log(`Created ${data.created_files.length} files`, 'success');
+                                }
+                                
+                            } catch (e) {
+                                console.error('Failed to parse:', e, dataStr);
+                            }
+                        }
+                    }
+                }
+                
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+            } finally {
+                // Reset UI
+                document.getElementById('startBtn').style.display = 'inline-block';
+                document.getElementById('stopBtn').style.display = 'none';
+                currentRequest = null;
+            }
+        }
+        
+        function stopStreaming() {
+            if (currentRequest) {
+                currentRequest.active = false;
+                if (currentRequest.reader) {
+                    currentRequest.reader.cancel();
+                }
+                log('Streaming stopped by user', 'warning');
+            }
+        }
+    </script>
+{% endblock %}

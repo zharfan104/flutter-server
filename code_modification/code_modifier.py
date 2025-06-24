@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import subprocess
 
-from .llm_executor import SimpleLLMExecutor, LLMResponse
+from .llm_executor import SimpleLLMExecutor, LLMResponse, StreamProgress
 from .project_analyzer import FlutterProjectAnalyzer, ProjectStructure
 from .prompt_loader import prompt_loader
 
@@ -226,6 +226,469 @@ class CodeModificationService:
                 changes_summary="No changes made due to error",
                 request_id=request.request_id
             )
+    
+    async def modify_code_stream(self, request: ModificationRequest):
+        """
+        Execute a code modification request with streaming progress updates
+        
+        Args:
+            request: The modification request
+            
+        Yields:
+            StreamProgress objects and status updates during the modification process
+        """
+        from .llm_executor import StreamProgress
+        
+        start_time = time.time()
+        
+        try:
+            # Initial progress
+            yield StreamProgress(
+                stage="analyzing",
+                message="Starting code modification...",
+                progress_percent=0.0,
+                metadata={"request_id": request.request_id}
+            )
+            
+            # Load project structure
+            yield StreamProgress(
+                stage="analyzing", 
+                message="Analyzing project structure...",
+                progress_percent=10.0
+            )
+            
+            structure = self._load_project_structure()
+            
+            # Determine which files need modification
+            yield StreamProgress(
+                stage="analyzing",
+                message="Determining files to modify...",
+                progress_percent=20.0
+            )
+            
+            if request.target_files:
+                directly_modified_files = set(request.target_files)
+                all_relevant_files = set(request.target_files)
+                files_to_create = request.files_to_create or []
+                files_to_delete = request.files_to_delete or []
+            else:
+                # Stream the file determination process
+                async for progress in self._determine_relevant_files_stream(request, structure):
+                    yield progress
+                
+                directly_modified_files, all_relevant_files, files_to_create, files_to_delete = await self._determine_relevant_files(request, structure)
+            
+            yield StreamProgress(
+                stage="generating",
+                message=f"Generating code for {len(directly_modified_files)} files...",
+                progress_percent=40.0,
+                metadata={
+                    "files_to_modify": len(directly_modified_files),
+                    "files_to_create": len(files_to_create),
+                    "files_to_delete": len(files_to_delete)
+                }
+            )
+            
+            if not directly_modified_files and not files_to_create and not files_to_delete:
+                yield StreamProgress(
+                    stage="error",
+                    message="No files identified for modification",
+                    progress_percent=0.0
+                )
+                return
+            
+            # Load current file contents
+            yield StreamProgress(
+                stage="analyzing",
+                message="Loading current file contents...",
+                progress_percent=30.0
+            )
+            
+            current_contents = {}
+            for file_path in all_relevant_files:
+                full_path = self.project_path / file_path
+                if full_path.exists():
+                    try:
+                        with open(full_path, 'r', encoding='utf-8') as f:
+                            current_contents[file_path] = f.read()
+                    except Exception as e:
+                        yield StreamProgress(
+                            stage="warning",
+                            message=f"Failed to read {file_path}: {str(e)}",
+                            progress_percent=30.0
+                        )
+            
+            # Generate code modifications using the existing method
+            yield StreamProgress(
+                stage="generating",
+                message="AI is generating code modifications...",
+                progress_percent=40.0,
+                metadata={
+                    "files_to_modify": list(directly_modified_files),
+                    "files_to_create": files_to_create,
+                    "files_to_delete": files_to_delete
+                }
+            )
+            
+            # Stream the LLM generation process
+            streaming_content = {}
+            accumulated_response = ""
+            current_file = None
+            current_content = ""
+            
+            # Get prompts for LLM
+            project_summary = self.project_analyzer.generate_project_summary()
+            all_target_files = list(directly_modified_files) + files_to_create
+            
+            contents_text = "\n\n".join([
+                f"=== {file_path} ===\n{content}"
+                for file_path, content in current_contents.items()
+                if file_path in all_target_files or file_path in current_contents
+            ])
+            
+            try:
+                system_prompt, user_prompt = self.prompt_loader.get_system_user_prompts(
+                    'generate_code',
+                    project_summary=json.dumps(project_summary, indent=2),
+                    change_request=request.description,
+                    current_contents=contents_text,
+                    target_files=json.dumps(all_target_files),
+                    files_to_create=json.dumps(files_to_create),
+                    files_to_delete=json.dumps(files_to_delete)
+                )
+            except KeyError:
+                user_prompt = self.prompt_loader.format_prompt(
+                    'generate_code',
+                    project_summary=json.dumps(project_summary, indent=2),
+                    change_request=request.description,
+                    current_contents=contents_text,
+                    target_files=json.dumps(all_target_files),
+                    files_to_create=json.dumps(files_to_create),
+                    files_to_delete=json.dumps(files_to_delete)
+                )
+                system_prompt = None
+            
+            # Prepare messages
+            content = [{"type": "text", "text": user_prompt}]
+            if request.images:
+                for image in request.images:
+                    content.extend([
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": image["media_type"],
+                                "data": image["data"]
+                            }
+                        },
+                        {"type": "text", "text": "Use this image as a reference."}
+                    ])
+            
+            messages = [{"role": "user", "content": content}]
+            
+            # Stream the response
+            async for chunk in self.llm_executor.execute_stream_with_progress(
+                messages=messages,
+                system_prompt=system_prompt
+            ):
+                if isinstance(chunk, str):
+                    # Text chunk from LLM
+                    accumulated_response += chunk
+                    
+                    # Detect file boundaries
+                    if "=== " in chunk and " ===" in chunk:
+                        # New file started
+                        if current_file:
+                            streaming_content[current_file] = current_content
+                            yield StreamProgress(
+                                stage="generating",
+                                message=f"Completed {current_file}",
+                                progress_percent=48.0,
+                                partial_content=current_content,
+                                metadata={"current_file": current_file, "file_complete": True}
+                            )
+                        
+                        # Extract new file name
+                        file_match = re.search(r'=== (.*?) ===', accumulated_response)
+                        if file_match:
+                            current_file = file_match.group(1).strip()
+                            current_content = ""
+                            yield StreamProgress(
+                                stage="generating",
+                                message=f"Generating {current_file}...",
+                                progress_percent=45.0,
+                                metadata={"current_file": current_file, "file_start": True}
+                            )
+                    else:
+                        # Add to current file content
+                        current_content += chunk
+                        
+                        # Yield streaming update
+                        yield StreamProgress(
+                            stage="generating",
+                            message=f"Writing code for {current_file or 'analysis'}...",
+                            progress_percent=46.0,
+                            partial_content=current_content,
+                            metadata={
+                                "current_file": current_file,
+                                "chunk": chunk,
+                                "streaming": True
+                            }
+                        )
+                
+                elif hasattr(chunk, 'stage'):
+                    # StreamProgress from LLM executor
+                    yield chunk
+            
+            # Complete last file if any
+            if current_file and current_content:
+                streaming_content[current_file] = current_content
+                yield StreamProgress(
+                    stage="generating", 
+                    message=f"Completed {current_file}",
+                    progress_percent=50.0,
+                    partial_content=current_content,
+                    metadata={"current_file": current_file, "file_complete": True}
+                )
+            
+            # Parse the complete response
+            modifications, deletions, shell_commands = self._parse_llm_response(
+                request, accumulated_response, current_contents, files_to_delete
+            )
+            
+            yield StreamProgress(
+                stage="generating",
+                message=f"Generated modifications for {len(modifications)} files",
+                progress_percent=60.0
+            )
+            
+            # Validation phase
+            yield StreamProgress(
+                stage="validating",
+                message="Validating generated code...",
+                progress_percent=70.0
+            )
+            
+            # Apply modifications with progress updates
+            yield StreamProgress(
+                stage="applying",
+                message="Applying code changes...",
+                progress_percent=80.0
+            )
+            
+            modified_files = []
+            created_files = []
+            errors = []
+            
+            for modification in modifications:
+                try:
+                    yield StreamProgress(
+                        stage="applying",
+                        message=f"Writing {modification.file_path}...",
+                        progress_percent=80.0 + (len(modified_files + created_files) / len(modifications)) * 15.0,
+                        metadata={"current_file": modification.file_path}
+                    )
+                    
+                    await self._apply_modification(modification)
+                    
+                    if modification.is_new_file:
+                        created_files.append(modification.file_path)
+                    else:
+                        modified_files.append(modification.file_path)
+                        
+                except Exception as e:
+                    errors.append(f"Failed to apply {modification.file_path}: {str(e)}")
+            
+            # Handle file deletions
+            deleted_files = []
+            for file_path in deletions:
+                try:
+                    yield StreamProgress(
+                        stage="applying",
+                        message=f"Deleting {file_path}...",
+                        progress_percent=95.0,
+                        metadata={"current_file": file_path}
+                    )
+                    
+                    full_path = self.project_path / file_path
+                    if full_path.exists():
+                        full_path.unlink()
+                        deleted_files.append(file_path)
+                        
+                except Exception as e:
+                    errors.append(f"Failed to delete {file_path}: {str(e)}")
+            
+            # Execute shell commands
+            if shell_commands:
+                yield StreamProgress(
+                    stage="applying",
+                    message="Executing shell commands...",
+                    progress_percent=96.0
+                )
+                
+                for cmd in shell_commands:
+                    try:
+                        yield StreamProgress(
+                            stage="applying",
+                            message=f"Running: {cmd}",
+                            progress_percent=97.0,
+                            metadata={"command": cmd}
+                        )
+                        
+                        # Execute command
+                        import subprocess
+                        result = subprocess.run(
+                            cmd,
+                            shell=True,
+                            cwd=str(self.project_path),
+                            capture_output=True,
+                            text=True
+                        )
+                        
+                        if result.returncode != 0:
+                            errors.append(f"Command failed: {cmd} - {result.stderr}")
+                            
+                    except Exception as e:
+                        errors.append(f"Failed to execute command {cmd}: {str(e)}")
+            
+            # Final completion
+            success = len(errors) == 0
+            yield StreamProgress(
+                stage="complete" if success else "error",
+                message="Code modification completed!" if success else f"Completed with {len(errors)} errors",
+                progress_percent=100.0,
+                metadata={
+                    "success": success,
+                    "modified_files": modified_files,
+                    "created_files": created_files,
+                    "deleted_files": deleted_files,
+                    "commands_executed": shell_commands,
+                    "errors": errors,
+                    "duration": time.time() - start_time
+                }
+            )
+            
+            # Send final result as structured event
+            yield {
+                "event_type": "result",
+                "success": success,
+                "modified_files": modified_files,
+                "created_files": created_files,
+                "deleted_files": deleted_files,
+                "commands_executed": shell_commands,
+                "errors": errors,
+                "request_id": request.request_id
+            }
+            
+        except Exception as e:
+            yield StreamProgress(
+                stage="error",
+                message=f"Code modification failed: {str(e)}",
+                progress_percent=0.0,
+                metadata={"error": str(e)}
+            )
+    
+    async def _determine_relevant_files_stream(self, request: ModificationRequest, structure: ProjectStructure):
+        """Stream progress updates for file determination"""
+        from .llm_executor import StreamProgress
+        
+        yield StreamProgress(
+            stage="analyzing",
+            message="Asking AI to determine relevant files...",
+            progress_percent=25.0
+        )
+        
+        # This could be enhanced to show LLM streaming during file determination
+        yield StreamProgress(
+            stage="analyzing", 
+            message="AI is analyzing project structure...",
+            progress_percent=30.0
+        )
+    
+    async def _generate_file_modification_stream(self, request: ModificationRequest, file_path: str, structure: ProjectStructure):
+        """Stream progress updates for individual file modification"""
+        from .llm_executor import StreamProgress
+        
+        yield StreamProgress(
+            stage="generating",
+            message=f"AI is analyzing {file_path}...",
+            progress_percent=45.0,
+            metadata={"current_file": file_path}
+        )
+        
+        # Stream the actual LLM generation process
+        async for progress in self._stream_llm_generation(request, file_path, structure):
+            yield progress
+    
+    async def _generate_new_file_stream(self, request: ModificationRequest, file_path: str, structure: ProjectStructure):
+        """Stream progress updates for new file creation"""
+        from .llm_executor import StreamProgress
+        
+        yield StreamProgress(
+            stage="generating",
+            message=f"AI is creating {file_path}...",
+            progress_percent=50.0,
+            metadata={"current_file": file_path}
+        )
+        
+        # Stream the actual LLM generation process
+        async for progress in self._stream_llm_generation(request, file_path, structure, is_new_file=True):
+            yield progress
+    
+    async def _stream_llm_generation(self, request: ModificationRequest, file_path: str, structure: ProjectStructure, is_new_file: bool = False):
+        """Stream the actual LLM generation process"""
+        from .llm_executor import StreamProgress
+        
+        if not self.llm_executor.is_available():
+            yield StreamProgress(
+                stage="generating",
+                message="Using fallback generation (no LLM available)...",
+                progress_percent=60.0
+            )
+            return
+        
+        try:
+            # Use the streaming LLM executor
+            messages = self._prepare_generation_messages(request, file_path, structure, is_new_file)
+            
+            async for event in self.llm_executor.execute_stream_with_progress(messages):
+                if hasattr(event, 'to_dict'):
+                    # Forward StreamProgress objects with file context
+                    progress = event
+                    progress.metadata = progress.metadata or {}
+                    progress.metadata.update({
+                        "current_file": file_path,
+                        "is_new_file": is_new_file
+                    })
+                    yield progress
+                elif isinstance(event, str):
+                    # Forward text chunks
+                    yield StreamProgress(
+                        stage="generating",
+                        message=f"AI generating code for {file_path}...",
+                        progress_percent=55.0,
+                        partial_content=event[-100:],  # Show last 100 chars
+                        metadata={"current_file": file_path, "text_chunk": event}
+                    )
+                    
+        except Exception as e:
+            yield StreamProgress(
+                stage="error",
+                message=f"Failed to generate {file_path}: {str(e)}",
+                progress_percent=0.0,
+                metadata={"current_file": file_path, "error": str(e)}
+            )
+    
+    def _prepare_generation_messages(self, request: ModificationRequest, file_path: str, structure: ProjectStructure, is_new_file: bool = False):
+        """Prepare messages for LLM generation (placeholder - would use existing logic)"""
+        # This would use the existing message preparation logic from the original modify_code method
+        # For now, return a basic message structure
+        return [
+            {
+                "role": "user",
+                "content": f"Generate code for {file_path} based on: {request.description}"
+            }
+        ]
     
     async def _determine_relevant_files(
         self, 
@@ -652,6 +1115,281 @@ class CodeModificationService:
         
         return modifications, deletions, shell_commands
     
+    async def _generate_modifications_stream(
+        self,
+        request: ModificationRequest,
+        structure: ProjectStructure,
+        directly_modified_files: Set[str],
+        files_to_create: List[str],
+        files_to_delete: List[str],
+        current_contents: Dict[str, str],
+        stream_callback=None
+    ):
+        """
+        Generate modified content with real LLM streaming
+        
+        Args:
+            request: The modification request
+            structure: Project structure
+            directly_modified_files: Files to modify
+            files_to_create: Files to create
+            files_to_delete: Files to delete
+            current_contents: Current file contents
+            stream_callback: Async callback for streaming chunks
+            
+        Yields:
+            Streaming chunks from LLM
+        """
+        if not self.llm_executor.is_available():
+            raise Exception("LLM executor not available for code generation")
+        
+        project_summary = self.project_analyzer.generate_project_summary()
+        
+        # Prepare the prompt
+        all_target_files = list(directly_modified_files) + files_to_create
+        
+        # Format current contents for the prompt
+        contents_text = "\n\n".join([
+            f"=== {file_path} ===\n{content}"
+            for file_path, content in current_contents.items()
+            if file_path in all_target_files or file_path in current_contents
+        ])
+        
+        # Get system and user prompts
+        try:
+            system_prompt, user_prompt = self.prompt_loader.get_system_user_prompts(
+                'generate_code',
+                project_summary=json.dumps(project_summary, indent=2),
+                change_request=request.description,
+                current_contents=contents_text,
+                target_files=json.dumps(all_target_files),
+                files_to_create=json.dumps(files_to_create),
+                files_to_delete=json.dumps(files_to_delete)
+            )
+            use_system_prompt = True
+        except KeyError:
+            # Fallback to legacy format
+            user_prompt = self.prompt_loader.format_prompt(
+                'generate_code',
+                project_summary=json.dumps(project_summary, indent=2),
+                change_request=request.description,
+                current_contents=contents_text,
+                target_files=json.dumps(all_target_files),
+                files_to_create=json.dumps(files_to_create),
+                files_to_delete=json.dumps(files_to_delete)
+            )
+            system_prompt = ""
+            use_system_prompt = False
+        
+        # Add images to content if provided
+        content = [{"type": "text", "text": user_prompt}]
+        if request.images:
+            for image in request.images:
+                content.extend([
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": image["media_type"],
+                            "data": image["data"]
+                        }
+                    },
+                    {"type": "text", "text": "Use this image as a reference."}
+                ])
+        
+        # Construct messages
+        messages = [{"role": "user", "content": content}]
+        
+        # Stream the LLM response
+        accumulated_response = ""
+        current_file = None
+        current_content = ""
+        
+        async for chunk in self.llm_executor.execute_stream_with_progress(
+            messages=messages,
+            system_prompt=system_prompt if use_system_prompt else None
+        ):
+            if isinstance(chunk, str):
+                # This is a text chunk
+                accumulated_response += chunk
+                
+                # Try to detect which file we're currently generating
+                if "=== " in chunk and " ===" in chunk:
+                    # New file section started
+                    if current_file and stream_callback:
+                        await stream_callback({
+                            "type": "file_complete",
+                            "file": current_file,
+                            "content": current_content
+                        })
+                    
+                    # Extract file name
+                    file_match = re.search(r'=== (.*?) ===', accumulated_response)
+                    if file_match:
+                        current_file = file_match.group(1)
+                        current_content = ""
+                        
+                        if stream_callback:
+                            await stream_callback({
+                                "type": "file_start",
+                                "file": current_file
+                            })
+                else:
+                    # Accumulate content for current file
+                    current_content += chunk
+                    
+                    if stream_callback:
+                        await stream_callback({
+                            "type": "chunk",
+                            "content": chunk,
+                            "file": current_file,
+                            "accumulated": accumulated_response
+                        })
+            
+            elif hasattr(chunk, 'stage'):
+                # This is a StreamProgress object
+                if stream_callback:
+                    await stream_callback({
+                        "type": "progress",
+                        "data": chunk
+                    })
+        
+        # Send final file complete if needed
+        if current_file and stream_callback:
+            await stream_callback({
+                "type": "file_complete", 
+                "file": current_file,
+                "content": current_content
+            })
+        
+        # Now parse the complete response
+        return self._parse_llm_response(request, accumulated_response, current_contents, files_to_delete)
+    
+    def _parse_llm_response(
+        self,
+        request: ModificationRequest,
+        response_text: str,
+        current_contents: Dict[str, str],
+        files_to_delete: List[str]
+    ) -> Tuple[List[FileModification], List[str], List[str]]:
+        """Parse the LLM response into modifications, deletions, and shell commands"""
+        modifications = []
+        deletions = []
+        shell_commands = []
+        
+        # Parse file blocks
+        file_blocks = self._parse_file_blocks(response_text)
+        
+        # Parse delete blocks
+        delete_blocks = re.findall(
+            r'<delete>(.*?)</delete>',
+            response_text,
+            re.DOTALL
+        )
+        
+        # Parse shell blocks
+        shell_blocks = re.findall(
+            r'<shell>(.*?)</shell>',
+            response_text,
+            re.DOTALL
+        )
+        
+        deletions.extend(delete_blocks)
+        
+        # Process shell commands
+        for shell_block in shell_blocks:
+            commands = [cmd.strip() for cmd in shell_block.strip().split('\n') if cmd.strip()]
+            shell_commands.extend(commands)
+        
+        # Process file modifications
+        for file_path, content in file_blocks:
+            cleaned_content = self._clean_file_content(content)
+            
+            if cleaned_content.strip() == "NO_CHANGES_NEEDED":
+                continue
+            
+            original_content = current_contents.get(file_path, "")
+            is_new_file = not (self.project_path / file_path).exists() or original_content == ""
+            operation = "create" if is_new_file else "modify"
+            validation_passed = self._validate_file_content(file_path, cleaned_content)
+            
+            if cleaned_content != original_content or is_new_file:
+                modifications.append(FileModification(
+                    file_path=file_path,
+                    original_content=original_content,
+                    modified_content=cleaned_content,
+                    change_description=f"{operation.capitalize()}d based on request: {request.description[:50]}...",
+                    operation=operation,
+                    is_new_file=is_new_file,
+                    validation_passed=validation_passed
+                ))
+        
+        # Add any explicitly requested deletions
+        if request.files_to_delete:
+            for file_to_delete in request.files_to_delete:
+                if file_to_delete not in deletions:
+                    deletions.append(file_to_delete)
+        
+        return modifications, deletions, shell_commands
+    
+    def _parse_file_blocks(self, response_text: str) -> List[Tuple[str, str]]:
+        """
+        Parse file blocks from the LLM response
+        Supports multiple formats:
+        1. <file path="...">content</file>
+        2. === path/to/file.dart ===\ncontent
+        3. JSON format with file_operations
+        """
+        file_blocks = []
+        
+        # First try JSON format
+        try:
+            # Look for JSON in the response
+            json_match = re.search(r'\{[\s\S]*"file_operations"[\s\S]*\}', response_text)
+            if json_match:
+                json_data = json.loads(json_match.group(0))
+                if "file_operations" in json_data:
+                    for file_op in json_data["file_operations"]:
+                        if file_op.get("operation") in ["create", "modify"]:
+                            file_blocks.append((file_op["path"], file_op.get("content", "")))
+                    return file_blocks
+        except (json.JSONDecodeError, KeyError):
+            pass
+        
+        # Try <file> tag format
+        file_tag_pattern = r'<file(?:\s+path="([^"]+)")?\s*>(.*?)</file>'
+        file_tag_matches = re.findall(file_tag_pattern, response_text, re.DOTALL)
+        if file_tag_matches:
+            for path, content in file_tag_matches:
+                if path:
+                    file_blocks.append((path, content))
+            return file_blocks
+        
+        # Try === delimiter format
+        delimiter_pattern = r'===\s*([^\s=]+)\s*===\n(.*?)(?=\n===|$)'
+        delimiter_matches = re.findall(delimiter_pattern, response_text, re.DOTALL)
+        if delimiter_matches:
+            for path, content in delimiter_matches:
+                file_blocks.append((path.strip(), content))
+            return file_blocks
+        
+        # Try to find file path patterns with content blocks
+        # Look for patterns like "lib/main.dart:" or "File: lib/main.dart"
+        file_pattern = r'(?:File:\s*|^)([a-zA-Z0-9_/.-]+\.dart)(?:\s*:)?\s*\n((?:(?!File:|^[a-zA-Z0-9_/.-]+\.dart).)*)'
+        file_matches = re.findall(file_pattern, response_text, re.MULTILINE | re.DOTALL)
+        if file_matches:
+            for path, content in file_matches:
+                # Clean up the content
+                content = content.strip()
+                if content and not content.startswith("```"):
+                    # If content doesn't start with code block, look for one
+                    code_block_match = re.search(r'```(?:dart)?\n(.*?)```', content, re.DOTALL)
+                    if code_block_match:
+                        content = code_block_match.group(1)
+                file_blocks.append((path, content))
+        
+        return file_blocks
+    
     def _clean_file_content(self, content: str) -> str:
         """
         Clean the file content by removing markdown and continuation markers
@@ -698,6 +1436,21 @@ class CodeModificationService:
                 return False
                 
         return True
+    
+    async def _apply_modification(self, modification: FileModification) -> None:
+        """Apply a single file modification"""
+        file_path = self.project_path / modification.file_path
+        
+        # Create directory if needed
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Write the file
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(modification.modified_content)
+            
+        if MONITORING_AVAILABLE:
+            operation = "create" if modification.is_new_file else "modify"
+            logger.info(LogCategory.FILE_OPS, f"{operation.capitalize()}d file: {modification.file_path}")
     
     async def _apply_modifications(
         self, 

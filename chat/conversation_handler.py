@@ -29,6 +29,16 @@ class ConversationHandler:
     
     def __init__(self):
         self.conversation_system_prompt = self._build_conversation_prompt()
+        self.system_prompt = self.conversation_system_prompt  # Alias for compatibility
+        self._llm_executor = None  # Lazy initialize
+    
+    @property
+    def llm_executor(self):
+        """Get or create LLM executor instance"""
+        if self._llm_executor is None:
+            from code_modification.llm_executor import SimpleLLMExecutor
+            self._llm_executor = SimpleLLMExecutor()
+        return self._llm_executor
     
     def _build_conversation_prompt(self) -> str:
         """Build the system prompt for conversational responses"""
@@ -236,6 +246,65 @@ Recent conversation context will help you respond appropriately."""
         return ConversationResponse(
             content=f"That's a great question about Flutter development! While I don't have a specific answer ready, I'd recommend checking the Flutter documentation or asking for more specific details so I can provide better guidance."
         )
+    
+    def _prepare_question_messages(
+        self,
+        message: str,
+        conversation_history: Optional[str] = None,
+        project_context: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Prepare messages for question handling"""
+        # Build enhanced prompt with context
+        enhanced_prompt = self.conversation_system_prompt
+        
+        if project_context:
+            enhanced_prompt += f"\n\n**Current Project Context:**\n{project_context}"
+        
+        if conversation_history:
+            enhanced_prompt += f"\n\n**Recent Conversation:**\n{conversation_history}"
+        
+        # Note: The system prompt will be passed separately to the LLM executor
+        # So we just return the user message here
+        return [
+            {
+                "role": "user",
+                "content": message
+            }
+        ]
+    
+    def _prepare_followup_messages(
+        self,
+        message: str,
+        conversation_history: Optional[str] = None,
+        project_context: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Prepare messages for follow-up handling"""
+        # For follow-ups, we want a more conversational tone
+        followup_prompt = """You are continuing a friendly Flutter development conversation.
+        
+Be natural, encouraging, and helpful. If the user is:
+- Thanking you: Be gracious and offer continued support
+- Expressing satisfaction: Celebrate with them and encourage their progress
+- Asking clarification: Provide clear, helpful explanations
+- Saying goodbye: Be warm and invite them back
+
+Keep responses conversational and supportive."""
+        
+        if project_context:
+            followup_prompt += f"\n\n**Current Project Context:**\n{project_context}"
+        
+        if conversation_history:
+            followup_prompt += f"\n\n**Recent Conversation:**\n{conversation_history}"
+        
+        # Update the system prompt for follow-ups
+        self.system_prompt = followup_prompt
+        
+        return [
+            {
+                "role": "user",
+                "content": message
+            }
+        ]
     
     def _fallback_followup_response(self, message: str) -> ConversationResponse:
         """Fallback response when LLM is unavailable for follow-ups"""

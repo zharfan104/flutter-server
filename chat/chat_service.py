@@ -56,6 +56,9 @@ class ChatService:
         
         # Background task tracking
         self.active_code_modifications = {}
+        
+        # Current conversation ID for streaming
+        self.currentConversationId = None
     
     def set_dependencies(self, flutter_manager=None, chat_manager=None):
         """Set dependencies after initialization"""
@@ -86,6 +89,9 @@ class ChatService:
                 conversation_id = self.chat_manager.get_or_create_default_conversation()
             elif not conversation_id:
                 conversation_id = str(uuid.uuid4())
+            
+            # Store conversation ID for streaming methods
+            self.currentConversationId = conversation_id
             
             # Add user message to conversation
             if self.chat_manager:
@@ -154,6 +160,238 @@ class ChatService:
                 intent=ChatIntent.FOLLOW_UP,
                 metadata={"error": str(e)}
             )
+    
+    async def handle_message_stream(self, request: ChatRequest):
+        """
+        Handle chat message with streaming progress updates
+        
+        Args:
+            request: ChatRequest with message and context
+            
+        Yields:
+            StreamProgress objects and chat responses during processing
+        """
+        from code_modification.llm_executor import StreamProgress
+        
+        try:
+            request_id = str(uuid.uuid4())
+            
+            yield StreamProgress(
+                stage="analyzing",
+                message="Processing your message...",
+                progress_percent=0.0,
+                metadata={"request_id": request_id}
+            )
+            
+            # Get or create conversation
+            conversation_id = request.conversation_id
+            if not conversation_id and self.chat_manager:
+                conversation_id = self.chat_manager.get_or_create_default_conversation()
+            elif not conversation_id:
+                conversation_id = str(uuid.uuid4())
+            
+            # Store conversation ID for streaming methods
+            self.currentConversationId = conversation_id
+            
+            yield StreamProgress(
+                stage="analyzing",
+                message="Understanding your request...",
+                progress_percent=10.0
+            )
+            
+            # Add user message to conversation
+            if self.chat_manager:
+                self.chat_manager.add_message(conversation_id, 'user', request.message)
+            
+            # Get conversation and project context
+            conversation_history = self._get_conversation_context(conversation_id)
+            project_context = self._get_project_context()
+            
+            yield StreamProgress(
+                stage="analyzing",
+                message="Classifying intent and analyzing context...",
+                progress_percent=20.0
+            )
+            
+            # Step 1: Classify intent and get immediate response
+            classified_response = await intent_classifier.classify_message(
+                message=request.message,
+                conversation_history=conversation_history,
+                project_context=project_context
+            )
+            
+            yield StreamProgress(
+                stage="analyzing",
+                message=f"Detected intent: {classified_response.intent.value}",
+                progress_percent=30.0,
+                metadata={"intent": classified_response.intent.value}
+            )
+            
+            # Step 2: Handle based on intent with streaming
+            if classified_response.intent == ChatIntent.CODE_CHANGE:
+                yield StreamProgress(
+                    stage="generating",
+                    message="Starting code modification...",
+                    progress_percent=40.0
+                )
+                
+                # Stream code modification process
+                async for progress in self._handle_code_modification_stream(request, classified_response, request_id):
+                    yield progress
+                    
+            elif classified_response.intent == ChatIntent.QUESTION:
+                yield StreamProgress(
+                    stage="generating",
+                    message="Generating detailed response...",
+                    progress_percent=50.0
+                )
+                
+                # Stream question response generation
+                async for progress in self._handle_question_stream(request, classified_response, conversation_history, project_context):
+                    yield progress
+                    
+            elif classified_response.intent == ChatIntent.FOLLOW_UP:
+                yield StreamProgress(
+                    stage="generating",
+                    message="Generating follow-up response...",
+                    progress_percent=60.0
+                )
+                
+                # Stream follow-up response generation
+                async for progress in self._handle_followup_stream(request, classified_response, conversation_history, project_context):
+                    yield progress
+            
+            # Send final chat response
+            yield {
+                "event_type": "chat_response",
+                "message": classified_response.message,
+                "conversation_id": conversation_id,
+                "intent": classified_response.intent.value,
+                "requires_code_modification": classified_response.intent == ChatIntent.CODE_CHANGE,
+                "code_modification_request_id": request_id if classified_response.intent == ChatIntent.CODE_CHANGE else None,
+                "metadata": {
+                    "request_id": request_id,
+                    "classification_confidence": classified_response.confidence
+                }
+            }
+            
+            # Add AI response to conversation
+            if self.chat_manager:
+                self.chat_manager.add_message(conversation_id, 'assistant', classified_response.message)
+            
+            yield StreamProgress(
+                stage="complete",
+                message="Chat response completed",
+                progress_percent=100.0,
+                metadata={"conversation_id": conversation_id}
+            )
+            
+        except Exception as e:
+            yield StreamProgress(
+                stage="error",
+                message=f"Error processing message: {str(e)}",
+                progress_percent=0.0,
+                metadata={"error": str(e)}
+            )
+    
+    async def _handle_code_modification_stream(self, request: ChatRequest, classified_response, request_id: str):
+        """Stream code modification process"""
+        from code_modification.llm_executor import StreamProgress
+        from code_modification.code_modifier import CodeModificationService, ModificationRequest
+        
+        try:
+            yield StreamProgress(
+                stage="generating",
+                message="Initializing code modification service...",
+                progress_percent=45.0
+            )
+            
+            # Initialize code modification service
+            if not self.flutter_manager:
+                yield StreamProgress(
+                    stage="error",
+                    message="Flutter manager not available",
+                    progress_percent=0.0
+                )
+                return
+            
+            code_modifier = CodeModificationService(str(self.flutter_manager.project_path))
+            
+            # Create modification request
+            modification_request = ModificationRequest(
+                description=request.message,
+                user_id=request.user_id,
+                request_id=request_id
+            )
+            
+            yield StreamProgress(
+                stage="generating",
+                message="Starting code generation with AI...",
+                progress_percent=50.0
+            )
+            
+            # Stream the code modification process
+            async for progress in code_modifier.modify_code_stream(modification_request):
+                if hasattr(progress, 'to_dict'):
+                    # Forward StreamProgress with chat context
+                    progress.metadata = progress.metadata or {}
+                    progress.metadata.update({
+                        "chat_request_id": request_id,
+                        "conversation_type": "code_modification"
+                    })
+                    yield progress
+                elif isinstance(progress, dict):
+                    # Forward result events
+                    yield progress
+            
+        except Exception as e:
+            yield StreamProgress(
+                stage="error",
+                message=f"Code modification failed: {str(e)}",
+                progress_percent=0.0,
+                metadata={"error": str(e)}
+            )
+    
+    async def _handle_question_stream(self, request: ChatRequest, classified_response, conversation_history, project_context):
+        """Stream question response generation"""
+        from code_modification.llm_executor import StreamProgress
+        
+        yield StreamProgress(
+            stage="generating",
+            message="AI is thinking about your question...",
+            progress_percent=60.0
+        )
+        
+        # This could be enhanced to use streaming LLM for question responses
+        yield StreamProgress(
+            stage="generating",
+            message="Generating detailed answer...",
+            progress_percent=80.0
+        )
+        
+        # For now, use the existing logic (could be enhanced with streaming)
+        yield StreamProgress(
+            stage="generating",
+            message="Finalizing response...",
+            progress_percent=90.0
+        )
+    
+    async def _handle_followup_stream(self, request: ChatRequest, classified_response, conversation_history, project_context):
+        """Stream follow-up response generation"""
+        from code_modification.llm_executor import StreamProgress
+        
+        yield StreamProgress(
+            stage="generating",
+            message="Processing follow-up conversation...",
+            progress_percent=70.0
+        )
+        
+        # This could be enhanced to use streaming LLM for follow-up responses
+        yield StreamProgress(
+            stage="generating",
+            message="Generating contextual response...",
+            progress_percent=85.0
+        )
     
     async def _handle_code_modification_intent(
         self, 
@@ -356,6 +594,130 @@ class ChatService:
             if request_id in self.active_code_modifications:
                 self.active_code_modifications[request_id]["status"] = "failed"
                 self.active_code_modifications[request_id]["error"] = str(e)
+    
+    async def _handle_question_stream(self, request: ChatRequest, classified_response, conversation_history, project_context):
+        """Stream question response generation with real-time token streaming"""
+        from code_modification.llm_executor import StreamProgress
+        
+        try:
+            # Get the LLM executor from conversation handler
+            llm_executor = conversation_handler.llm_executor
+            
+            # Prepare messages for streaming
+            messages = conversation_handler._prepare_question_messages(
+                request.message,
+                conversation_history,
+                project_context
+            )
+            
+            accumulated_response = ""
+            
+            # Stream the LLM response
+            async for chunk in llm_executor.execute_stream_with_progress(
+                messages=messages,
+                system_prompt=conversation_handler.system_prompt
+            ):
+                if isinstance(chunk, str):
+                    # This is a text chunk - send it as streaming text
+                    accumulated_response += chunk
+                    yield {
+                        "event_type": "text",
+                        "text": chunk,
+                        "accumulated": accumulated_response
+                    }
+                elif hasattr(chunk, 'stage'):
+                    # This is a StreamProgress object
+                    yield chunk
+            
+            # Send the complete response with proper intent
+            yield {
+                "event_type": "chat_response",
+                "message": accumulated_response,
+                "conversation_id": request.conversation_id,
+                "intent": "question",
+                "metadata": {
+                    "streamed": True,
+                    "token_count": len(accumulated_response.split())
+                }
+            }
+            
+            # Add to conversation history
+            if self.chat_manager and accumulated_response:
+                self.chat_manager.add_message(
+                    request.conversation_id or self.currentConversationId, 
+                    'assistant', 
+                    accumulated_response
+                )
+            
+        except Exception as e:
+            yield StreamProgress(
+                stage="error",
+                message=f"Error generating response: {str(e)}",
+                progress_percent=0.0,
+                metadata={"error": str(e)}
+            )
+    
+    async def _handle_followup_stream(self, request: ChatRequest, classified_response, conversation_history, project_context):
+        """Stream follow-up response generation with real-time token streaming"""
+        from code_modification.llm_executor import StreamProgress
+        
+        try:
+            # Get the LLM executor from conversation handler
+            llm_executor = conversation_handler.llm_executor
+            
+            # Prepare messages for streaming
+            messages = conversation_handler._prepare_followup_messages(
+                request.message,
+                conversation_history,
+                project_context
+            )
+            
+            accumulated_response = ""
+            
+            # Stream the LLM response
+            async for chunk in llm_executor.execute_stream_with_progress(
+                messages=messages,
+                system_prompt=conversation_handler.system_prompt
+            ):
+                if isinstance(chunk, str):
+                    # This is a text chunk - send it as streaming text
+                    accumulated_response += chunk
+                    yield {
+                        "event_type": "text",
+                        "text": chunk,
+                        "accumulated": accumulated_response
+                    }
+                elif hasattr(chunk, 'stage'):
+                    # This is a StreamProgress object
+                    yield chunk
+            
+            # Send the complete response
+            yield {
+                "event_type": "chat_response",
+                "message": accumulated_response,
+                "conversation_id": request.conversation_id,
+                "intent": "follow_up",
+                "metadata": {
+                    "streamed": True,
+                    "token_count": len(accumulated_response.split())
+                }
+            }
+            
+            # Add to conversation history
+            if self.chat_manager and accumulated_response:
+                self.chat_manager.add_message(
+                    request.conversation_id or self.currentConversationId,
+                    'assistant',
+                    accumulated_response
+                )
+            
+        except Exception as e:
+            yield StreamProgress(
+                stage="error",
+                message=f"Error generating follow-up response: {str(e)}",
+                progress_percent=0.0,
+                metadata={"error": str(e)}
+            )
     
     def _get_conversation_context(self, conversation_id: str) -> Optional[str]:
         """Get recent conversation context"""

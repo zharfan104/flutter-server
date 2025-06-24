@@ -6,6 +6,7 @@ A containerized Flutter development environment with AI-powered code modificatio
 
 - **Flutter Development Server** with hot reload capabilities
 - **AI-Powered Code Modification** using Claude/OpenAI
+- **Real-time Streaming Responses** with token-by-token chat and live code generation
 - **Web-Based Code Editor** with Monaco Editor and Dart syntax support
 - **Project Analysis** with Flutter-specific insights
 - **Real-time Chat Interface** for conversational code assistance
@@ -191,9 +192,17 @@ flutter-server/
 - `POST /api/suggest-files` - Get file suggestions for changes
 
 ### Chat APIs
-- `POST /api/chat/send` - Send chat message
+- `POST /api/chat/send` - Send chat message (non-streaming)
+- `POST /api/stream/chat` - **NEW: Stream chat responses in real-time**
 - `GET /api/chat/history` - Get conversation history
 - `POST /api/chat/new` - Start new conversation
+
+### Streaming APIs (NEW!)
+- `POST /api/stream/chat` - Real-time token-by-token chat responses
+- `POST /api/stream/modify-code` - Live code generation with progress updates
+- `GET /streaming-demo` - Interactive demo of streaming capabilities
+
+See [STREAMING_API.md](STREAMING_API.md) for detailed streaming documentation.
 
 ## 🚀 Cloud Deployment
 

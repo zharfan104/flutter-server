@@ -565,15 +565,15 @@ class CodeEditor {
     }
     
     /**
-     * Process AI modification request using actual API
+     * Process AI modification request using streaming API
      */
     async simulateAIProcess(request) {
         try {
-            this.updateAIProgress(10, 'Sending request to AI service...');
-            this.logAI('Sending modification request...');
+            this.updateAIProgress(10, 'Connecting to AI service...');
+            this.logAI('Starting streaming modification request...');
             
-            // Send request to code modification API
-            const response = await fetch('/api/modify-code', {
+            // Use EventSource for streaming
+            const eventSource = new EventSource('/api/stream/modify-code', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -584,17 +584,25 @@ class CodeEditor {
                 })
             });
             
-            const result = await response.json();
+            // Since EventSource doesn't support POST directly, use fetch with streaming
+            const response = await fetch('/api/stream/modify-code', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    description: request,
+                    user_id: 'editor_user'
+                })
+            });
             
             if (!response.ok) {
-                throw new Error(result.error || 'Modification request failed');
+                const error = await response.json();
+                throw new Error(error.error || 'Streaming request failed');
             }
             
-            const requestId = result.request_id;
-            this.logAI(`Modification started with ID: ${requestId}`);
-            
-            // Poll for status updates
-            await this.pollAIModificationStatus(requestId);
+            // Process streaming response
+            await this.processStreamingResponse(response);
             
         } catch (error) {
             this.updateAIProgress(0, `Failed: ${error.message}`);
@@ -604,9 +612,129 @@ class CodeEditor {
     }
     
     /**
-     * Poll AI modification status
+     * Process streaming response from AI service
      */
-    async pollAIModificationStatus(requestId, maxAttempts = 30) {
+    async processStreamingResponse(response) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let currentFile = null;
+        let accumulatedContent = '';
+        
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+                
+                for (const line of lines) {
+                    if (line.startsWith('event:')) {
+                        // Handle event type
+                        const eventType = line.substring(6).trim();
+                        
+                    } else if (line.startsWith('data:')) {
+                        // Handle data
+                        const dataStr = line.substring(5).trim();
+                        if (!dataStr) continue;
+                        
+                        try {
+                            const data = JSON.parse(dataStr);
+                            
+                            // Handle different event types
+                            if (data.stage) {
+                                // Progress update
+                                const progress = data.progress_percent || 0;
+                                this.updateAIProgress(progress, data.message);
+                                this.logAI(data.message);
+                                
+                                // Handle metadata
+                                if (data.metadata) {
+                                    if (data.metadata.current_file !== currentFile) {
+                                        if (currentFile && accumulatedContent) {
+                                            // Show preview of previous file
+                                            this.showFilePreview(currentFile, accumulatedContent);
+                                        }
+                                        currentFile = data.metadata.current_file;
+                                        accumulatedContent = '';
+                                    }
+                                    
+                                    if (data.metadata.text_chunk) {
+                                        accumulatedContent += data.metadata.text_chunk;
+                                        // Update live preview
+                                        this.updateLivePreview(currentFile, accumulatedContent);
+                                    }
+                                }
+                                
+                                // Handle completion
+                                if (data.stage === 'complete') {
+                                    this.logAI('AI modification completed successfully!');
+                                    await this.loadFileTree();
+                                    window.flutterDevServer?.showToast('AI modification completed', 'success');
+                                } else if (data.stage === 'error') {
+                                    throw new Error(data.message);
+                                }
+                            } else if (data.text) {
+                                // Raw text chunk - accumulate for preview
+                                accumulatedContent += data.text;
+                                this.updateLivePreview(currentFile, accumulatedContent);
+                            } else if (data.event_type === 'result') {
+                                // Final result
+                                this.logAI(`Modified ${data.modified_files.length} files, created ${data.created_files.length} files`);
+                                if (data.modified_files.includes(this.activeTab)) {
+                                    await this.loadFile(this.activeTab);
+                                    this.logAI(`Reloaded modified file: ${this.activeTab}`);
+                                }
+                            }
+                            
+                        } catch (e) {
+                            console.error('Failed to parse streaming data:', e, dataStr);
+                        }
+                    }
+                }
+            }
+        } finally {
+            reader.releaseLock();
+        }
+    }
+    
+    /**
+     * Show live preview of file being generated
+     */
+    updateLivePreview(fileName, content) {
+        const previewElement = document.getElementById('ai-preview');
+        if (!previewElement) return;
+        
+        // Show last 500 characters with typing effect
+        const preview = content.slice(-500);
+        previewElement.innerHTML = `
+            <div class="text-muted small">Generating ${fileName || 'content'}...</div>
+            <pre class="mt-2 p-2 bg-light rounded"><code>${this.escapeHtml(preview)}<span class="typing-cursor">▋</span></code></pre>
+        `;
+    }
+    
+    /**
+     * Show file preview after completion
+     */
+    showFilePreview(fileName, content) {
+        this.logAI(`Completed generating ${fileName}`);
+    }
+    
+    /**
+     * Escape HTML for safe display
+     */
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    /**
+     * Poll AI modification status (deprecated - using streaming now)
+     */
+    async pollAIModificationStatus_deprecated(requestId, maxAttempts = 30) {
         let attempts = 0;
         const pollInterval = 2000; // 2 seconds
         

@@ -34,7 +34,7 @@ class ChatManager {
         const chatForm = document.getElementById('chat-form');
         chatForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            this.sendMessage();
+            this.sendMessageStream(); // Use streaming version by default
         });
         
         // Message input auto-expand and enter handling
@@ -47,7 +47,7 @@ class ChatManager {
         messageInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                this.sendMessage();
+                this.sendMessageStream(); // Use streaming version by default
             }
         });
         
@@ -457,6 +457,396 @@ class ChatManager {
             messageInput.value = message;
             this.updateSendButton();
             this.autoExpandTextarea();
+        }
+    }
+    
+    async sendMessageStream() {
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const message = messageInput.value.trim();
+        
+        if (!message || sendButton.classList.contains('loading') || this.isSending) return;
+        
+        // Prevent double sending
+        this.isSending = true;
+        
+        // Set immediate loading state
+        this.setLoadingState(true);
+        
+        // Clear input
+        messageInput.value = '';
+        this.autoExpandTextarea();
+        
+        // Add user message to UI immediately
+        const userMessage = {
+            role: 'user',
+            content: message,
+            formatted_time: new Date().toLocaleTimeString('en-US', { 
+                hour12: false, 
+                hour: '2-digit', 
+                minute: '2-digit',
+                second: '2-digit'
+            }),
+            timestamp: Date.now() / 1000
+        };
+        this.addMessageToUI(userMessage);
+        this.lastMessageCount++; // Update count for user message
+        
+        // Show streaming indicator
+        this.showStreamingIndicator('Connecting to AI...');
+        
+        try {
+            // Create SSE connection
+            const eventSource = new EventSource('/api/stream/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    message: message,
+                    conversation_id: this.currentConversationId,
+                    user_id: 'user'
+                })
+            });
+            
+            // Note: EventSource doesn't support POST directly, so we need to use fetch with SSE
+            const response = await fetch('/api/stream/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    message: message,
+                    conversation_id: this.currentConversationId,
+                    user_id: 'user'
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            
+            console.log('🌊 Starting streaming response...');
+            
+            while (true) {
+                const { done, value } = await reader.read();
+                
+                if (done) {
+                    console.log('🌊 Stream completed');
+                    break;
+                }
+                
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || ''; // Keep incomplete line in buffer
+                
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            this.handleStreamEvent(data);
+                        } catch (e) {
+                            console.warn('Failed to parse SSE data:', line, e);
+                        }
+                    } else if (line.startsWith('event: ')) {
+                        // Handle event type if needed
+                        const eventType = line.slice(8);
+                        console.log('📡 SSE Event:', eventType);
+                    }
+                }
+            }
+            
+        } catch (error) {
+            console.error('Streaming failed:', error);
+            this.hideStreamingIndicator();
+            this.setLoadingState(false);
+            this.showToast('Failed to send message: ' + error.message, 'danger');
+            
+            // Restore the message to input on error
+            messageInput.value = message;
+            this.updateSendButton();
+            this.autoExpandTextarea();
+        } finally {
+            this.isSending = false;
+        }
+    }
+    
+    handleStreamEvent(data) {
+        console.log('📡 Stream event:', data);
+        
+        // Handle different types of stream events
+        if (data.stage) {
+            // Progress update
+            this.updateStreamingProgress(data);
+        } else if (data.event_type === 'chat_response') {
+            // Final chat response - but don't add again if we've been streaming
+            if (!this.currentStreamingMessage) {
+                this.handleChatResponse(data);
+            } else {
+                // Just finalize the streaming message
+                this.finalizeStreamingMessage(data);
+            }
+        } else if (data.event_type === 'result') {
+            // Code modification result
+            this.handleCodeModificationResult(data);
+        } else if (data.event_type === 'text') {
+            // Text chunk for real-time streaming
+            this.appendStreamingText(data.text);
+        }
+    }
+    
+    updateStreamingProgress(progress) {
+        const indicator = document.getElementById('typing-indicator');
+        const statusText = indicator.querySelector('.processing-status');
+        const progressBar = this.getOrCreateProgressBar();
+        
+        // Update message
+        if (statusText) {
+            statusText.textContent = progress.message || 'Processing...';
+        }
+        
+        // Update progress bar
+        if (progressBar && progress.progress_percent !== undefined) {
+            progressBar.style.width = `${progress.progress_percent}%`;
+            progressBar.setAttribute('aria-valuenow', progress.progress_percent);
+        }
+        
+        // Show partial content if available
+        if (progress.partial_content) {
+            this.showPartialContent(progress.partial_content);
+        }
+        
+        // Handle different stages
+        switch (progress.stage) {
+            case 'analyzing':
+                this.setIndicatorColor('info');
+                break;
+            case 'generating':
+                this.setIndicatorColor('primary');
+                break;
+            case 'applying':
+                this.setIndicatorColor('warning');
+                break;
+            case 'complete':
+                this.hideStreamingIndicator();
+                this.setLoadingState(false);
+                break;
+            case 'error':
+                this.setIndicatorColor('danger');
+                this.showToast(progress.message, 'danger');
+                this.hideStreamingIndicator();
+                this.setLoadingState(false);
+                break;
+        }
+    }
+    
+    handleChatResponse(data) {
+        console.log('💬 Chat response received:', data);
+        
+        // Add AI response to conversation
+        if (this.currentConversationId !== data.conversation_id) {
+            this.currentConversationId = data.conversation_id;
+        }
+        
+        const aiMessage = {
+            role: 'assistant',
+            content: data.message,
+            formatted_time: new Date().toLocaleTimeString('en-US', { 
+                hour12: false, 
+                hour: '2-digit', 
+                minute: '2-digit',
+                second: '2-digit'
+            }),
+            timestamp: Date.now() / 1000,
+            intent: data.intent
+        };
+        
+        this.addMessageToUI(aiMessage);
+        this.lastMessageCount++;
+        
+        // Handle code modification if needed
+        if (data.requires_code_modification) {
+            this.showStreamingIndicator('🔧 Starting code modifications...');
+        }
+    }
+    
+    handleCodeModificationResult(data) {
+        console.log('🔧 Code modification result:', data);
+        
+        if (data.success) {
+            this.showToast('Code modification completed successfully!', 'success');
+            
+            // Trigger hot reload if Flutter is running
+            this.triggerFlutterReload();
+        } else {
+            this.showToast('Code modification failed: ' + (data.errors || []).join(', '), 'danger');
+        }
+        
+        this.hideStreamingIndicator();
+        this.setLoadingState(false);
+    }
+    
+    showStreamingIndicator(message) {
+        const indicator = document.getElementById('typing-indicator');
+        const statusText = indicator.querySelector('.processing-status');
+        
+        if (statusText) {
+            statusText.textContent = message || 'Processing...';
+        }
+        
+        // Create progress bar if it doesn't exist
+        this.getOrCreateProgressBar();
+        
+        indicator.style.display = 'block';
+        this.scrollToBottom();
+    }
+    
+    hideStreamingIndicator() {
+        const indicator = document.getElementById('typing-indicator');
+        indicator.style.display = 'none';
+        
+        // Remove any partial content display
+        this.clearPartialContent();
+    }
+    
+    getOrCreateProgressBar() {
+        const indicator = document.getElementById('typing-indicator');
+        let progressContainer = indicator.querySelector('.progress-container');
+        
+        if (!progressContainer) {
+            progressContainer = document.createElement('div');
+            progressContainer.className = 'progress-container mt-2';
+            progressContainer.innerHTML = `
+                <div class="progress" style="height: 4px;">
+                    <div class="progress-bar bg-primary" role="progressbar" 
+                         style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                    </div>
+                </div>
+            `;
+            indicator.appendChild(progressContainer);
+        }
+        
+        return progressContainer.querySelector('.progress-bar');
+    }
+    
+    setIndicatorColor(type) {
+        const progressBar = document.querySelector('#typing-indicator .progress-bar');
+        if (progressBar) {
+            progressBar.className = `progress-bar bg-${type}`;
+        }
+    }
+    
+    showPartialContent(content) {
+        const indicator = document.getElementById('typing-indicator');
+        let partialContainer = indicator.querySelector('.partial-content');
+        
+        if (!partialContainer) {
+            partialContainer = document.createElement('div');
+            partialContainer.className = 'partial-content mt-2 p-2 bg-light rounded';
+            partialContainer.style.fontSize = '0.8em';
+            partialContainer.style.fontFamily = 'monospace';
+            partialContainer.style.maxHeight = '100px';
+            partialContainer.style.overflow = 'auto';
+            indicator.appendChild(partialContainer);
+        }
+        
+        partialContainer.textContent = content;
+        this.scrollToBottom();
+    }
+    
+    clearPartialContent() {
+        const indicator = document.getElementById('typing-indicator');
+        const partialContainer = indicator.querySelector('.partial-content');
+        const progressContainer = indicator.querySelector('.progress-container');
+        
+        if (partialContainer) {
+            partialContainer.remove();
+        }
+        if (progressContainer) {
+            progressContainer.remove();
+        }
+    }
+    
+    appendStreamingText(text) {
+        // Create or get the streaming message element
+        if (!this.currentStreamingMessage) {
+            // Show typing indicator first
+            this.showStreamingIndicator('AI is typing...');
+            
+            // Create a new message element for streaming
+            const messagesContainer = document.getElementById('messages-container');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message assistant mb-3 d-flex align-items-end streaming-message';
+            messageDiv.innerHTML = `
+                <div class="avatar-sm bg-primary rounded-circle d-flex align-items-center justify-content-center me-2">
+                    <i class="bi bi-robot text-white small"></i>
+                </div>
+                <div class="message-bubble assistant p-3">
+                    <div class="message-content streaming-content"></div>
+                    <div class="message-time text-end mt-1">${new Date().toLocaleTimeString('en-US', { 
+                        hour12: false, 
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        second: '2-digit'
+                    })}</div>
+                </div>
+            `;
+            
+            messagesContainer.appendChild(messageDiv);
+            this.currentStreamingMessage = messageDiv.querySelector('.streaming-content');
+            this.currentStreamingContent = '';
+            
+            // Hide the typing indicator now that we're showing real content
+            this.hideStreamingIndicator();
+        }
+        
+        // Append the text chunk
+        this.currentStreamingContent += text;
+        this.currentStreamingMessage.innerHTML = this.formatMessageContent(this.currentStreamingContent);
+        
+        // Add typing animation cursor
+        if (!this.currentStreamingMessage.querySelector('.typing-cursor')) {
+            const cursor = document.createElement('span');
+            cursor.className = 'typing-cursor';
+            cursor.textContent = '▌';
+            cursor.style.animation = 'blink 1s infinite';
+            this.currentStreamingMessage.appendChild(cursor);
+        }
+        
+        this.scrollToBottom();
+    }
+    
+    finalizeStreamingMessage(data) {
+        // Remove typing cursor
+        if (this.currentStreamingMessage) {
+            const cursor = this.currentStreamingMessage.querySelector('.typing-cursor');
+            if (cursor) cursor.remove();
+            
+            // Update with final content if different
+            if (data.message && data.message !== this.currentStreamingContent) {
+                this.currentStreamingMessage.innerHTML = this.formatMessageContent(data.message);
+            }
+            
+            // Update message metadata
+            const messageDiv = this.currentStreamingMessage.closest('.message');
+            if (messageDiv) {
+                messageDiv.classList.remove('streaming-message');
+                messageDiv.dataset.intent = data.intent;
+            }
+        }
+        
+        // Clear streaming state
+        this.currentStreamingMessage = null;
+        this.currentStreamingContent = '';
+        this.lastMessageCount++;
+        
+        // Handle code modification if needed
+        if (data.requires_code_modification) {
+            this.showStreamingIndicator('🔧 Starting code modifications...');
         }
     }
     
