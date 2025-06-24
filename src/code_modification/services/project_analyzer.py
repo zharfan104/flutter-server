@@ -13,9 +13,9 @@ from pathlib import Path
 
 # Import advanced logging and monitoring
 try:
-    from utils.advanced_logger import logger, LogCategory, LogLevel
-    from utils.performance_monitor import performance_monitor, TimingContext
-    from utils.error_analyzer import error_analyzer
+    from src.utils.advanced_logger import logger, LogCategory, LogLevel
+    from src.utils.performance_monitor import performance_monitor, TimingContext
+    from src.utils.error_analyzer import error_analyzer
     MONITORING_AVAILABLE = True
 except ImportError:
     MONITORING_AVAILABLE = False

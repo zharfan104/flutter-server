@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 # Import advanced logging and monitoring
 try:
-    from utils.advanced_logger import logger, LogCategory
+    from src.utils.advanced_logger import logger, LogCategory
     MONITORING_AVAILABLE = True
 except ImportError:
     MONITORING_AVAILABLE = False

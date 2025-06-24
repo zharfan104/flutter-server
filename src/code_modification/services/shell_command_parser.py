@@ -13,7 +13,7 @@ from pathlib import Path
 
 # Import advanced logging and monitoring
 try:
-    from utils.advanced_logger import logger, LogCategory, LogLevel
+    from src.utils.advanced_logger import logger, LogCategory, LogLevel
     MONITORING_AVAILABLE = True
 except ImportError:
     MONITORING_AVAILABLE = False

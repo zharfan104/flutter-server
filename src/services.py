@@ -85,10 +85,10 @@ class ServiceRegistry:
     def _initialize_monitoring_service(self) -> ServiceResult:
         """Initialize advanced logging and monitoring systems"""
         try:
-            from utils.advanced_logger import logger, LogCategory, RequestTracker
-            from utils.request_tracer import tracer
-            from utils.performance_monitor import performance_monitor
-            from utils.error_analyzer import error_analyzer
+            from src.utils.advanced_logger import logger, LogCategory, RequestTracker
+            from src.utils.request_tracer import tracer
+            from src.utils.performance_monitor import performance_monitor
+            from src.utils.error_analyzer import error_analyzer
             
             # Configure advanced logging
             logger.configure(
@@ -195,7 +195,7 @@ def log_startup_info(registry: ServiceRegistry) -> None:
         
         # Import LogCategory to use proper enum
         try:
-            from utils.advanced_logger import LogCategory
+            from src.utils.advanced_logger import LogCategory
             logger.info(LogCategory.SYSTEM, "Flutter server application starting",
                        context={
                            "port": 5000,
@@ -217,7 +217,7 @@ def log_ready_info(registry: ServiceRegistry) -> None:
         
         # Import LogCategory to use proper enum
         try:
-            from utils.advanced_logger import LogCategory
+            from src.utils.advanced_logger import LogCategory
             logger.info(LogCategory.SYSTEM, "Flask server ready to serve requests",
                        context={
                            "host": "0.0.0.0",

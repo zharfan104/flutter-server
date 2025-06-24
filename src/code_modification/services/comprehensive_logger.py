@@ -14,8 +14,8 @@ from pathlib import Path
 
 # Import existing logging infrastructure
 try:
-    from utils.advanced_logger import logger, LogCategory, LogLevel
-    from utils.performance_monitor import performance_monitor, TimingContext
+    from src.utils.advanced_logger import logger, LogCategory, LogLevel
+    from src.utils.performance_monitor import performance_monitor, TimingContext
     MONITORING_AVAILABLE = True
 except ImportError:
     MONITORING_AVAILABLE = False

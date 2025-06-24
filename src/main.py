@@ -203,7 +203,7 @@ def auto_start_flutter_if_needed(registry: ServiceRegistry):
                 monitoring = registry.get('monitoring')
                 logger = monitoring['logger']
                 try:
-                    from utils.advanced_logger import LogCategory
+                    from src.utils.advanced_logger import LogCategory
                     logger.warn(LogCategory.FLUTTER, "Flutter auto-start failed",
                                context={
                                    "error": result['error'],
@@ -220,7 +220,7 @@ def auto_start_flutter_if_needed(registry: ServiceRegistry):
                 monitoring = registry.get('monitoring')
                 logger = monitoring['logger']
                 try:
-                    from utils.advanced_logger import LogCategory
+                    from src.utils.advanced_logger import LogCategory
                     logger.info(LogCategory.FLUTTER, "Flutter development server auto-started",
                                context={
                                    "pid": result.get('pid'),

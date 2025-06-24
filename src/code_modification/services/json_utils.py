@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 
 # Import advanced logging
 try:
-    from utils.advanced_logger import logger, LogCategory
+    from src.utils.advanced_logger import logger, LogCategory
     MONITORING_AVAILABLE = True
 except ImportError:
     MONITORING_AVAILABLE = False

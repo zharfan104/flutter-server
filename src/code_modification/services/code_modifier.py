@@ -19,10 +19,10 @@ from .prompt_loader import prompt_loader
 
 # Import advanced logging and monitoring
 try:
-    from utils.advanced_logger import logger, LogCategory, LogLevel, OperationTracker
-    from utils.request_tracer import tracer, EventContext, TraceEventType
-    from utils.performance_monitor import performance_monitor, TimingContext
-    from utils.error_analyzer import error_analyzer, analyze_error
+    from src.utils.advanced_logger import logger, LogCategory, LogLevel, OperationTracker
+    from src.utils.request_tracer import tracer, EventContext, TraceEventType
+    from src.utils.performance_monitor import performance_monitor, TimingContext
+    from src.utils.error_analyzer import error_analyzer, analyze_error
     MONITORING_AVAILABLE = True
 except ImportError:
     MONITORING_AVAILABLE = False
