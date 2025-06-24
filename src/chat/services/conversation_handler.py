@@ -36,7 +36,7 @@ class ConversationHandler:
     def llm_executor(self):
         """Get or create LLM executor instance"""
         if self._llm_executor is None:
-            from code_modification.llm_executor import SimpleLLMExecutor
+            from src.code_modification.services.llm_executor import SimpleLLMExecutor
             self._llm_executor = SimpleLLMExecutor()
         return self._llm_executor
     
@@ -84,7 +84,7 @@ Be helpful, practical, and encouraging. If you need more information to provide 
             ConversationResponse with helpful guidance
         """
         try:
-            from code_modification.llm_executor import SimpleLLMExecutor
+            from src.code_modification.services.llm_executor import SimpleLLMExecutor
             
             if MONITORING_AVAILABLE:
                 logger.info(LogCategory.CHAT, f"Handling question: {message[:100]}...")
@@ -154,7 +154,7 @@ Be helpful, practical, and encouraging. If you need more information to provide 
             ConversationResponse with natural conversational reply
         """
         try:
-            from code_modification.llm_executor import SimpleLLMExecutor
+            from src.code_modification.services.llm_executor import SimpleLLMExecutor
             
             if MONITORING_AVAILABLE:
                 logger.info(LogCategory.CHAT, f"Handling follow-up: {message[:100]}...")

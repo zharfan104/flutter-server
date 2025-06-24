@@ -89,7 +89,7 @@ Be concise but helpful. For CODE_CHANGE intents, be specific about what you'll d
             ClassifiedResponse with intent, message, and metadata
         """
         try:
-            from code_modification.llm_executor import SimpleLLMExecutor
+            from src.code_modification.services.llm_executor import SimpleLLMExecutor
             
             if MONITORING_AVAILABLE:
                 logger.info(LogCategory.CHAT, f"Classifying message: {message[:100]}...")

@@ -119,6 +119,10 @@ def chat_stream():
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 
+                # Send initial connection event to test SSE
+                initial_event = f"event: connected\ndata: {json.dumps({'status': 'connected', 'message': 'Stream started'})}\n\n"
+                yield initial_event
+                
                 async def stream_chat():
                     try:
                         # Check if streaming method exists
@@ -126,22 +130,28 @@ def chat_stream():
                             async for event in chat_service.handle_message_stream(chat_request):
                                 if hasattr(event, 'to_dict'):
                                     # StreamProgress object
-                                    yield f"event: progress\\ndata: {json.dumps(event.to_dict())}\\n\\n"
+                                    event_data = event.to_dict()
+                                    progress_event = f"event: progress\ndata: {json.dumps(event_data)}\n\n"
+                                    yield progress_event
                                 elif isinstance(event, dict):
                                     # Chat response or status update
                                     event_type = event.get('event_type', 'chat')
-                                    yield f"event: {event_type}\\ndata: {json.dumps(event)}\\n\\n"
+                                    dict_event = f"event: {event_type}\ndata: {json.dumps(event)}\n\n"
+                                    yield dict_event
                                 elif isinstance(event, str):
                                     # Text chunk
-                                    yield f"event: text\\ndata: {json.dumps({'text': event})}\\n\\n"
+                                    text_event = f"event: text\ndata: {json.dumps({'text': event})}\n\n"
+                                    yield text_event
                         else:
                             # Fallback to synchronous chat
                             result = await chat_service.handle_message(chat_request)
+                            
                             if hasattr(result, 'to_dict'):
                                 result_dict = result.to_dict()
                             else:
                                 result_dict = result
-                            yield f"event: complete\\ndata: {json.dumps(result_dict)}\\n\\n"
+                            
+                            yield f"event: complete\ndata: {json.dumps(result_dict)}\n\n"
                     
                     except Exception as e:
                         error_data = {
@@ -149,23 +159,29 @@ def chat_stream():
                             'stage': 'error',
                             'message': f'Chat streaming failed: {str(e)}'
                         }
-                        yield f"event: error\\ndata: {json.dumps(error_data)}\\n\\n"
+                        yield f"event: error\ndata: {json.dumps(error_data)}\n\n"
                     
                     finally:
                         # Send completion event
-                        yield f"event: complete\\ndata: {json.dumps({'message': 'Chat stream ended'})}\\n\\n"
+                        yield f"event: complete\ndata: {json.dumps({'message': 'Chat stream ended'})}\n\n"
                 
-                # Run the async streaming
+                # Run the async streaming with proper async handling
                 async_gen = stream_chat()
                 
                 try:
                     while True:
-                        chunk = loop.run_until_complete(async_gen.__anext__())
-                        yield chunk
-                except StopAsyncIteration:
+                        try:
+                            chunk = loop.run_until_complete(async_gen.__anext__())
+                            yield chunk
+                        except StopAsyncIteration:
+                            break
+                        except Exception as e:
+                            break
+                except Exception as e:
                     pass
                 finally:
-                    loop.close()
+                    if not loop.is_closed():
+                        loop.close()
                     
             except Exception as e:
                 error_data = {
@@ -173,7 +189,7 @@ def chat_stream():
                     'stage': 'error',
                     'message': f'Failed to start chat streaming: {str(e)}'
                 }
-                yield f"event: error\\ndata: {json.dumps(error_data)}\\n\\n"
+                yield f"event: error\ndata: {json.dumps(error_data)}\n\n"
         
         # Return SSE response
         return Response(
@@ -183,13 +199,14 @@ def chat_stream():
                 'Cache-Control': 'no-cache',
                 'Connection': 'keep-alive',
                 'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Cache-Control'
+                'Access-Control-Allow-Headers': 'Cache-Control',
+                'X-Accel-Buffering': 'no',  # Disable nginx buffering
+                'Transfer-Encoding': 'chunked'  # Ensure chunked encoding
             }
         )
         
     except Exception as e:
         return jsonify({"error": f"Failed to start chat streaming: {str(e)}"}), 500
-
 
 @chat_bp.route('/history', methods=['GET'])
 def get_history():

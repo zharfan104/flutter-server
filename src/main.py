@@ -35,7 +35,7 @@ def print_startup_banner():
     print("🚀 Flutter Server (Modular)")
     print("==========================")
     print("Starting Flask server on port 5000...")
-    print("Auto-starting Flutter development server...")
+    print("Flutter auto-start disabled - start manually via web interface")
     print("Access the web interface at: http://localhost:5000")
     print()
 
@@ -296,8 +296,8 @@ def main():
     # 5. Log startup info
     log_startup_info(registry)
     
-    # 6. Auto-start Flutter if configured
-    auto_start_flutter_if_needed(registry)
+    # 6. Auto-start Flutter disabled for simplicity
+    print("⏭️ Auto-start Flutter disabled - use web interface to start manually")
     
     # 7. Log ready info
     log_ready_info(registry)

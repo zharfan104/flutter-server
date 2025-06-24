@@ -31,12 +31,12 @@ kill_processes() {
     pkill -f "python.*flutter_server" 2>/dev/null || true
     pkill -f "flask.*run" 2>/dev/null || true
     
-    # Kill Flutter processes
-    print_status "Killing Flutter processes..."
-    pkill -f "flutter run" 2>/dev/null || true
-    pkill -f "flutter.*web-server" 2>/dev/null || true
-    pkill -f "dart:flut" 2>/dev/null || true
-    pkill -9 -f "dart" 2>/dev/null || true
+    # Kill Flutter processes (commented out for simplicity)
+    # print_status "Killing Flutter processes..."
+    # pkill -f "flutter run" 2>/dev/null || true
+    # pkill -f "flutter.*web-server" 2>/dev/null || true
+    # pkill -f "dart:flut" 2>/dev/null || true
+    # pkill -9 -f "dart" 2>/dev/null || true
     
     # Kill processes on specific ports
     print_status "Freeing up ports 5000 and 8080..."
@@ -47,21 +47,21 @@ kill_processes() {
         lsof -Pi :5000 -sTCP:LISTEN -t | xargs kill -9 2>/dev/null || true
     fi
     
-    # Kill processes on port 8080 (Flutter)
+    # Check port 8080 (Flutter) but don't automatically kill
     if lsof -Pi :8080 -sTCP:LISTEN -t >/dev/null 2>&1; then
-        print_warning "Port 8080 is in use, killing processes..."
-        lsof -Pi :8080 -sTCP:LISTEN -t | xargs kill -9 2>/dev/null || true
+        print_warning "Port 8080 is in use (this is normal if Flutter is running)"
+        # lsof -Pi :8080 -sTCP:LISTEN -t | xargs kill -9 2>/dev/null || true
     fi
     
     # Give processes time to cleanup
     sleep 2
     
-    # Double-check ports are free
-    if lsof -Pi :8080 -sTCP:LISTEN -t >/dev/null 2>&1; then
-        print_warning "Port 8080 still in use, forcing cleanup..."
-        lsof -Pi :8080 -sTCP:LISTEN -t | xargs kill -9 2>/dev/null || true
-        sleep 1
-    fi
+    # Note: Port 8080 checking disabled for simplicity
+    # if lsof -Pi :8080 -sTCP:LISTEN -t >/dev/null 2>&1; then
+    #     print_warning "Port 8080 still in use, forcing cleanup..."
+    #     lsof -Pi :8080 -sTCP:LISTEN -t | xargs kill -9 2>/dev/null || true
+    #     sleep 1
+    # fi
     
     print_status "Process cleanup complete!"
 }

@@ -31,7 +31,7 @@ class FlutterManager:
         self.dev_mode = os.environ.get('FLUTTER_DEV_MODE', 'fast').lower()  # fast, debug, profile
         
     def setup_project(self) -> None:
-        """Clone repository or create Flutter project if no repo URL"""
+        """Clone repository or check project existence (simplified - no auto-creation)"""
         if self.repo_url:
             print(f"Cloning repository: {self.repo_url}")
             if not os.path.exists(self.project_path):
@@ -46,11 +46,12 @@ class FlutterManager:
             else:
                 print("Repository already exists")
         else:
-            # Fallback to creating generic Flutter project
+            # Check if Flutter project exists, but don't auto-create
             if not os.path.exists(self.project_path):
-                print("Creating generic Flutter project...")
-                subprocess.run(["flutter", "create", "project"], cwd=os.getcwd(), check=True)
-                print("Flutter project created!")
+                print("⚠️ No Flutter project found at './project' - Please create one manually or use the web interface")
+                return
+            else:
+                print("✅ Using existing Flutter project at './project'")
     
     def start_flutter(self) -> Dict[str, Any]:
         """Start Flutter development server with hot reload"""

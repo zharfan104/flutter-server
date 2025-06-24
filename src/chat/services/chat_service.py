@@ -171,7 +171,7 @@ class ChatService:
         Yields:
             StreamProgress objects and chat responses during processing
         """
-        from code_modification.llm_executor import StreamProgress
+        from src.code_modification.services.llm_executor import StreamProgress
         
         try:
             request_id = str(uuid.uuid4())
@@ -296,8 +296,8 @@ class ChatService:
     
     async def _handle_code_modification_stream(self, request: ChatRequest, classified_response, request_id: str):
         """Stream code modification process"""
-        from code_modification.llm_executor import StreamProgress
-        from code_modification.code_modifier import CodeModificationService, ModificationRequest
+        from src.code_modification.services.llm_executor import StreamProgress
+        from src.code_modification.services.code_modifier import CodeModificationService, ModificationRequest
         
         try:
             yield StreamProgress(
@@ -354,7 +354,7 @@ class ChatService:
     
     async def _handle_question_stream(self, request: ChatRequest, classified_response, conversation_history, project_context):
         """Stream question response generation"""
-        from code_modification.llm_executor import StreamProgress
+        from src.code_modification.services.llm_executor import StreamProgress
         
         yield StreamProgress(
             stage="generating",
@@ -378,7 +378,7 @@ class ChatService:
     
     async def _handle_followup_stream(self, request: ChatRequest, classified_response, conversation_history, project_context):
         """Stream follow-up response generation"""
-        from code_modification.llm_executor import StreamProgress
+        from src.code_modification.services.llm_executor import StreamProgress
         
         yield StreamProgress(
             stage="generating",
@@ -502,7 +502,7 @@ class ChatService:
                 self.active_code_modifications[request_id]["status"] = "processing"
             
             # Import and execute code modification
-            from code_modification.code_modifier import CodeModificationService, ModificationRequest
+            from src.code_modification.services.code_modifier import CodeModificationService, ModificationRequest
             
             if not self.flutter_manager:
                 raise Exception("Flutter manager not available for code modifications")
@@ -597,7 +597,7 @@ class ChatService:
     
     async def _handle_question_stream(self, request: ChatRequest, classified_response, conversation_history, project_context):
         """Stream question response generation with real-time token streaming"""
-        from code_modification.llm_executor import StreamProgress
+        from src.code_modification.services.llm_executor import StreamProgress
         
         try:
             # Get the LLM executor from conversation handler
@@ -659,7 +659,7 @@ class ChatService:
     
     async def _handle_followup_stream(self, request: ChatRequest, classified_response, conversation_history, project_context):
         """Stream follow-up response generation with real-time token streaming"""
-        from code_modification.llm_executor import StreamProgress
+        from src.code_modification.services.llm_executor import StreamProgress
         
         try:
             # Get the LLM executor from conversation handler
@@ -741,7 +741,7 @@ class ChatService:
             return None
         
         try:
-            from code_modification.project_analyzer import FlutterProjectAnalyzer
+            from src.code_modification.services.project_analyzer import FlutterProjectAnalyzer
             analyzer = FlutterProjectAnalyzer(self.flutter_manager.project_path)
             project_summary = analyzer.generate_project_summary()
             

@@ -497,6 +497,10 @@ class ChatManager {
         this.showStreamingIndicator('Connecting to AI...');
         
         try {
+            console.log('🚀 [FRONTEND] Starting chat stream request...');
+            console.log('🚀 [FRONTEND] Message:', message);
+            console.log('🚀 [FRONTEND] Conversation ID:', this.currentConversationId);
+            
             // EventSource doesn't support POST, so we use fetch with SSE streaming
             const response = await fetch('/api/chat/stream', {
                 method: 'POST',
@@ -510,6 +514,9 @@ class ChatManager {
                 })
             });
             
+            console.log('🚀 [FRONTEND] Response received:', response.status, response.statusText);
+            console.log('🚀 [FRONTEND] Response headers:', [...response.headers.entries()]);
+            
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
@@ -517,42 +524,99 @@ class ChatManager {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';
+            let streamTimeout;
+            let chunkCount = 0;
             
-            console.log('🌊 Starting streaming response...');
+            console.log('🌊 [FRONTEND] Starting streaming response...');
+            console.log('🌊 [FRONTEND] Reader created:', !!reader);
+            
+            // Set up timeout for inactive streams
+            const resetTimeout = () => {
+                if (streamTimeout) clearTimeout(streamTimeout);
+                streamTimeout = setTimeout(() => {
+                    console.warn('🔴 [FRONTEND] Stream timeout - no data received for 30 seconds');
+                    reader.cancel();
+                }, 30000); // 30 second timeout
+            };
+            
+            resetTimeout();
             
             while (true) {
+                console.log(`🔄 [FRONTEND] Reading chunk ${chunkCount + 1}...`);
                 const { done, value } = await reader.read();
                 
                 if (done) {
-                    console.log('🌊 Stream completed');
+                    console.log('🌊 [FRONTEND] Stream completed after', chunkCount, 'chunks');
+                    if (streamTimeout) clearTimeout(streamTimeout);
                     break;
                 }
                 
-                buffer += decoder.decode(value, { stream: true });
+                chunkCount++;
+                console.log(`📦 [FRONTEND] Chunk ${chunkCount} received:`, value?.length, 'bytes');
+                
+                resetTimeout(); // Reset timeout on each data chunk
+                
+                const rawText = decoder.decode(value, { stream: true });
+                console.log(`📝 [FRONTEND] Raw chunk text:`, rawText);
+                
+                buffer += rawText;
                 const lines = buffer.split('\n');
                 buffer = lines.pop() || ''; // Keep incomplete line in buffer
                 
+                console.log(`📋 [FRONTEND] Processing ${lines.length} lines from buffer`);
+                
                 for (const line of lines) {
+                    if (line.trim() === '') {
+                        console.log('⏭️ [FRONTEND] Skipping empty line');
+                        continue; // Skip empty lines
+                    }
+                    
+                    console.log(`📄 [FRONTEND] Processing line:`, line);
+                    
                     if (line.startsWith('data: ')) {
                         try {
-                            const data = JSON.parse(line.slice(6));
+                            const dataStr = line.slice(6);
+                            console.log(`📊 [FRONTEND] Parsing SSE data:`, dataStr);
+                            const data = JSON.parse(dataStr);
+                            console.log(`✅ [FRONTEND] Parsed SSE data:`, data);
                             this.handleStreamEvent(data);
                         } catch (e) {
-                            console.warn('Failed to parse SSE data:', line, e);
+                            console.warn('❌ [FRONTEND] Failed to parse SSE data:', line, e);
                         }
                     } else if (line.startsWith('event: ')) {
                         // Handle event type if needed
                         const eventType = line.slice(8);
-                        console.log('📡 SSE Event:', eventType);
+                        console.log('📡 [FRONTEND] SSE Event type:', eventType);
+                    } else {
+                        console.log('❓ [FRONTEND] Unknown line format:', line);
                     }
                 }
             }
             
+            if (streamTimeout) clearTimeout(streamTimeout);
+            
         } catch (error) {
             console.error('Streaming failed:', error);
+            
+            // Clean up timeout if it exists
+            if (typeof streamTimeout !== 'undefined' && streamTimeout) {
+                clearTimeout(streamTimeout);
+            }
+            
             this.hideStreamingIndicator();
             this.setLoadingState(false);
-            this.showToast('Failed to send message: ' + error.message, 'danger');
+            
+            // Better error messaging based on error type
+            let errorMessage = 'Failed to send message';
+            if (error.message.includes('ERR_INCOMPLETE_CHUNKED_ENCODING')) {
+                errorMessage = 'Connection interrupted - please try again';
+            } else if (error.message.includes('timeout')) {
+                errorMessage = 'Request timed out - please try again';
+            } else {
+                errorMessage = 'Failed to send message: ' + error.message;
+            }
+            
+            this.showToast(errorMessage, 'danger');
             
             // Restore the message to input on error
             messageInput.value = message;
@@ -564,7 +628,8 @@ class ChatManager {
     }
     
     handleStreamEvent(data) {
-        console.log('📡 Stream event:', data);
+        console.log('🎯 [FRONTEND] handleStreamEvent called with:', data);
+        console.log('🎯 [FRONTEND] Event type:', typeof data, 'Stage:', data?.stage);
         
         // Track if we're in code generation mode
         if (data.stage === 'generating' && data.metadata && data.metadata.current_file) {
