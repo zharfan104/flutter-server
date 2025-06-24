@@ -1,0 +1,542 @@
+{
+  "session_summary": {
+    "session_id": "dart_fix_1750772927",
+    "start_time": "2025-06-24T20:48:47.973974",
+    "duration_seconds": 139.68,
+    "metrics": {
+      "session_id": "dart_fix_1750772927",
+      "start_time": 1750772927.9739738,
+      "end_time": 1750773067.6536322,
+      "total_attempts": 3,
+      "successful_attempts": 1,
+      "failed_attempts": 2,
+      "commands_executed": 12,
+      "fixes_applied": 6,
+      "files_modified": 6,
+      "initial_error_count": 2,
+      "final_error_count": 0,
+      "total_duration": 139.67965841293335,
+      "success": true
+    },
+    "total_attempts": 3,
+    "total_stages": 22,
+    "total_commands": 12,
+    "successful_commands": 4,
+    "failed_commands": 8,
+    "files_modified": 6,
+    "latest_attempt": "AttemptLog(attempt_number=3, stage=<RecoveryStage.ERROR_ANALYSIS: 'error_analysis'>, timestamp=1750773030.9943433, duration=33.611656188964844, success=True, error_count_before=15, error_count_after=0, commands_executed=['flutter pub get', 'dart fix --apply', 'flutter pub add firebase_core firebase_auth cloud_firestore', 'flutter pub get'], fixes_applied=2, files_modified=['lib/services/auth_service.dart', 'lib/screens/home_screen.dart'], error_message=None, context=None)"
+  },
+  "attempt_logs": [
+    {
+      "attempt_number": 1,
+      "stage": "RecoveryStage.ERROR_ANALYSIS",
+      "timestamp": 1750772931.0102096,
+      "duration": 63.842894315719604,
+      "success": false,
+      "error_count_before": 2,
+      "error_count_after": 15,
+      "commands_executed": [
+        "dart fix --apply",
+        "dart fix --apply",
+        "dart format ."
+      ],
+      "fixes_applied": 2,
+      "files_modified": [
+        "lib/main.dart",
+        "lib/screens/login_screen.dart"
+      ],
+      "error_message": null,
+      "context": null
+    },
+    {
+      "attempt_number": 2,
+      "stage": "RecoveryStage.ERROR_ANALYSIS",
+      "timestamp": 1750772994.8544767,
+      "duration": 36.138161182403564,
+      "success": false,
+      "error_count_before": 15,
+      "error_count_after": 15,
+      "commands_executed": [
+        "flutter pub get",
+        "dart fix --apply",
+        "flutter pub add firebase_core firebase_auth cloud_firestore",
+        "flutter pub get"
+      ],
+      "fixes_applied": 2,
+      "files_modified": [
+        "lib/services/auth_service.dart",
+        "lib/screens/home_screen.dart"
+      ],
+      "error_message": null,
+      "context": null
+    },
+    {
+      "attempt_number": 3,
+      "stage": "RecoveryStage.ERROR_ANALYSIS",
+      "timestamp": 1750773030.9943433,
+      "duration": 33.611656188964844,
+      "success": true,
+      "error_count_before": 15,
+      "error_count_after": 0,
+      "commands_executed": [
+        "flutter pub get",
+        "dart fix --apply",
+        "flutter pub add firebase_core firebase_auth cloud_firestore",
+        "flutter pub get"
+      ],
+      "fixes_applied": 2,
+      "files_modified": [
+        "lib/services/auth_service.dart",
+        "lib/screens/home_screen.dart"
+      ],
+      "error_message": null,
+      "context": null
+    }
+  ],
+  "stage_logs": [
+    {
+      "stage": "initialization",
+      "timestamp": 1750772927.9760008,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": null,
+      "context": {
+        "session_id": "dart_fix_1750772927",
+        "initial_error_count": null,
+        "start_time": "2025-06-24T20:48:47.973974"
+      }
+    },
+    {
+      "stage": "error_capture",
+      "timestamp": 1750772927.9772508,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": null,
+      "context": {}
+    },
+    {
+      "stage": "error_analysis",
+      "timestamp": 1750772930.983058,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": null,
+      "context": {
+        "snapshot": {
+          "attempt_number": 0,
+          "total_errors": 2,
+          "total_warnings": 1,
+          "error_categories": {
+            "error": 2,
+            "type_errors": 2,
+            "warning": 1,
+            "info": 1
+          },
+          "context": "Initial analysis"
+        }
+      }
+    },
+    {
+      "stage": "initialization",
+      "timestamp": 1750772930.984464,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": null,
+      "context": {
+        "session_id": "dart_fix_1750772927",
+        "initial_error_count": 2,
+        "start_time": "2025-06-24T20:48:47.973974"
+      }
+    },
+    {
+      "stage": "command_planning",
+      "timestamp": 1750772931.0133998,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 1,
+      "context": {}
+    },
+    {
+      "stage": "command_execution",
+      "timestamp": 1750772931.0134308,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 1,
+      "context": {}
+    },
+    {
+      "stage": "fix_generation",
+      "timestamp": 1750772939.1576755,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 1,
+      "context": {}
+    },
+    {
+      "stage": "fix_application",
+      "timestamp": 1750772993.4946322,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 1,
+      "context": {}
+    },
+    {
+      "stage": "error_analysis",
+      "timestamp": 1750772994.848775,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 1,
+      "context": {
+        "snapshot": {
+          "attempt_number": 1,
+          "total_errors": 15,
+          "total_warnings": 0,
+          "error_categories": {
+            "error": 15,
+            "other_errors": 4,
+            "undefined_symbols": 9,
+            "type_errors": 2,
+            "info": 14
+          },
+          "context": "After attempt 1"
+        }
+      }
+    },
+    {
+      "stage": "progress_analysis",
+      "timestamp": 1750772994.850069,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 1,
+      "context": {
+        "diff": {
+          "from_attempt": 0,
+          "to_attempt": 1,
+          "progress_score": 0.5,
+          "regression_score": 0.0,
+          "summary": {
+            "fixed": 1,
+            "warnings_fixed": 1,
+            "modified": 2,
+            "errors_modified": 1
+          },
+          "changes_count": 3
+        }
+      }
+    },
+    {
+      "stage": "command_planning",
+      "timestamp": 1750772994.8569944,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 2,
+      "context": {}
+    },
+    {
+      "stage": "command_execution",
+      "timestamp": 1750772994.8570588,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 2,
+      "context": {}
+    },
+    {
+      "stage": "fix_generation",
+      "timestamp": 1750773002.684151,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 2,
+      "context": {}
+    },
+    {
+      "stage": "fix_application",
+      "timestamp": 1750773029.1972861,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 2,
+      "context": {}
+    },
+    {
+      "stage": "command_planning",
+      "timestamp": 1750773030.997203,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 3,
+      "context": {}
+    },
+    {
+      "stage": "command_execution",
+      "timestamp": 1750773030.9972692,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 3,
+      "context": {}
+    },
+    {
+      "stage": "fix_generation",
+      "timestamp": 1750773038.6578617,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 3,
+      "context": {}
+    },
+    {
+      "stage": "fix_application",
+      "timestamp": 1750773063.138578,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 3,
+      "context": {}
+    },
+    {
+      "stage": "error_analysis",
+      "timestamp": 1750773064.601561,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 3,
+      "context": {
+        "snapshot": {
+          "attempt_number": 3,
+          "total_errors": 0,
+          "total_warnings": 0,
+          "error_categories": {
+            "info": 11
+          },
+          "context": "After attempt 3"
+        }
+      }
+    },
+    {
+      "stage": "progress_analysis",
+      "timestamp": 1750773064.6030712,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 3,
+      "context": {
+        "diff": {
+          "from_attempt": 1,
+          "to_attempt": 3,
+          "progress_score": 1.0,
+          "regression_score": 0.0,
+          "summary": {
+            "fixed": 1,
+            "errors_fixed": 1,
+            "modified": 1
+          },
+          "changes_count": 2
+        }
+      }
+    },
+    {
+      "stage": "validation",
+      "timestamp": 1750773064.6075046,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": null,
+      "context": {}
+    },
+    {
+      "stage": "completion",
+      "timestamp": 1750773067.653652,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": null,
+      "context": {
+        "session_id": "dart_fix_1750772927",
+        "success": true,
+        "final_error_count": 0,
+        "total_duration": 139.67965841293335,
+        "error_message": null,
+        "metrics": {
+          "session_id": "dart_fix_1750772927",
+          "start_time": 1750772927.9739738,
+          "end_time": 1750773067.6536322,
+          "total_attempts": 3,
+          "successful_attempts": 1,
+          "failed_attempts": 2,
+          "commands_executed": 12,
+          "fixes_applied": 6,
+          "files_modified": 6,
+          "initial_error_count": 2,
+          "final_error_count": 0,
+          "total_duration": 139.67965841293335,
+          "success": true
+        }
+      }
+    }
+  ],
+  "command_logs": [
+    {
+      "timestamp": 1750772929.6024075,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": null,
+      "command": "flutter pub get",
+      "args": [
+        "get"
+      ],
+      "success": false,
+      "exit_code": -1,
+      "execution_time": 1.6055908203125,
+      "timeout": false,
+      "error_message": "Command execution failed: 'AdvancedLogger' object has no attribute 'level'",
+      "context": "Initial pub get",
+      "stdout_length": 0,
+      "stderr_length": 0
+    },
+    {
+      "timestamp": 1750772935.8428311,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 1,
+      "command": "dart fix --apply",
+      "args": [
+        "--apply"
+      ],
+      "success": false,
+      "exit_code": -1,
+      "execution_time": 4.822859764099121,
+      "timeout": false,
+      "error_message": "Command execution failed: 'AdvancedLogger' object has no attribute 'level'",
+      "context": "Suggested command for error fixing",
+      "stdout_length": 0,
+      "stderr_length": 0
+    },
+    {
+      "timestamp": 1750772939.1562703,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 1,
+      "command": "dart fix --apply",
+      "args": [
+        "--apply"
+      ],
+      "success": false,
+      "exit_code": -1,
+      "execution_time": 2.3039252758026123,
+      "timeout": false,
+      "error_message": "Command execution failed: 'AdvancedLogger' object has no attribute 'level'",
+      "context": "Automatic dart fix",
+      "stdout_length": 0,
+      "stderr_length": 0
+    },
+    {
+      "timestamp": 1750772993.4912844,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 1,
+      "command": "dart format .",
+      "args": [],
+      "success": false,
+      "exit_code": 65,
+      "execution_time": 0.8131294250488281,
+      "timeout": false,
+      "error_message": "Could not format because the source could not be parsed:\n\nline 189, column 31 of lib/main.dart: Expected an identifier.\n    \u2577\n189 \u2502             if (user != null) ..[\n    \u2502                               ^^\n    \u2575\nline 225, column 16 of lib/main.dart: Expected to find ']'.\n    \u2577\n225 \u2502               ),\n    \u2502                ^\n    \u2575\n",
+      "context": "AI-suggested shell command",
+      "stdout_length": 47,
+      "stderr_length": 329
+    },
+    {
+      "timestamp": 1750772996.467835,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 2,
+      "command": "flutter pub get",
+      "args": [
+        "get"
+      ],
+      "success": false,
+      "exit_code": -1,
+      "execution_time": 1.6036500930786133,
+      "timeout": false,
+      "error_message": "Command execution failed: 'AdvancedLogger' object has no attribute 'level'",
+      "context": "Suggested command for error fixing",
+      "stdout_length": 0,
+      "stderr_length": 0
+    },
+    {
+      "timestamp": 1750773002.6827598,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 2,
+      "command": "dart fix --apply",
+      "args": [
+        "--apply"
+      ],
+      "success": false,
+      "exit_code": -1,
+      "execution_time": 5.204780578613281,
+      "timeout": false,
+      "error_message": "Command execution failed: 'AdvancedLogger' object has no attribute 'level'",
+      "context": "Automatic dart fix",
+      "stdout_length": 0,
+      "stderr_length": 0
+    },
+    {
+      "timestamp": 1750773029.1923218,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 2,
+      "command": "flutter pub add firebase_core firebase_auth cloud_firestore",
+      "args": [],
+      "success": true,
+      "exit_code": 0,
+      "execution_time": 2.9571659564971924,
+      "timeout": false,
+      "error_message": null,
+      "context": "AI-suggested shell command",
+      "stdout_length": 1295,
+      "stderr_length": 0
+    },
+    {
+      "timestamp": 1750773029.1945198,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 2,
+      "command": "flutter pub get",
+      "args": [],
+      "success": true,
+      "exit_code": 0,
+      "execution_time": 1.9868443012237549,
+      "timeout": false,
+      "error_message": null,
+      "context": "AI-suggested shell command",
+      "stdout_length": 605,
+      "stderr_length": 0
+    },
+    {
+      "timestamp": 1750773032.8364573,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 3,
+      "command": "flutter pub get",
+      "args": [
+        "get"
+      ],
+      "success": false,
+      "exit_code": -1,
+      "execution_time": 1.8316161632537842,
+      "timeout": false,
+      "error_message": "Command execution failed: 'AdvancedLogger' object has no attribute 'level'",
+      "context": "Suggested command for error fixing",
+      "stdout_length": 0,
+      "stderr_length": 0
+    },
+    {
+      "timestamp": 1750773038.656532,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 3,
+      "command": "dart fix --apply",
+      "args": [
+        "--apply"
+      ],
+      "success": false,
+      "exit_code": -1,
+      "execution_time": 4.809706449508667,
+      "timeout": false,
+      "error_message": "Command execution failed: 'AdvancedLogger' object has no attribute 'level'",
+      "context": "Automatic dart fix",
+      "stdout_length": 0,
+      "stderr_length": 0
+    },
+    {
+      "timestamp": 1750773063.1335883,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 3,
+      "command": "flutter pub add firebase_core firebase_auth cloud_firestore",
+      "args": [],
+      "success": true,
+      "exit_code": 0,
+      "execution_time": 2.531877279281616,
+      "timeout": false,
+      "error_message": null,
+      "context": "AI-suggested shell command",
+      "stdout_length": 850,
+      "stderr_length": 0
+    },
+    {
+      "timestamp": 1750773063.135457,
+      "session_id": "dart_fix_1750772927",
+      "attempt_number": 3,
+      "command": "flutter pub get",
+      "args": [],
+      "success": true,
+      "exit_code": 0,
+      "execution_time": 2.0725767612457275,
+      "timeout": false,
+      "error_message": null,
+      "context": "AI-suggested shell command",
+      "stdout_length": 605,
+      "stderr_length": 0
+    }
+  ],
+  "export_timestamp": "2025-06-24T20:51:07.655048"
+}

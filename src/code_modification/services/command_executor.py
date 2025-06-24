@@ -245,7 +245,7 @@ class CommandExecutor:
                           })
                 
                 # Log stdout/stderr if not successful or verbose logging
-                if not success or logger.level <= LogLevel.DEBUG:
+                if not success or logger.log_level <= LogLevel.DEBUG:
                     if result.stdout:
                         logger.debug(LogCategory.SHELL_CMD, f"STDOUT: {result.stdout[:500]}")
                     if result.stderr:
