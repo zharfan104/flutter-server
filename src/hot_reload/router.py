@@ -30,26 +30,39 @@ def set_dependencies(**services):
 def trigger_hot_reload():
     """Trigger Flutter hot reload"""
     try:
+        print("🔄 [HOT_RELOAD] Hot reload endpoint triggered")
+        
         if not flutter_manager:
+            print("❌ [HOT_RELOAD] Flutter manager not initialized")
             return jsonify({"error": "Flutter manager not initialized"}), 500
+        
+        print("✅ [HOT_RELOAD] Flutter manager available")
         
         # Get request parameters
         data = request.json or {}
         with_error_recovery = data.get('with_error_recovery', True)
         max_retries = data.get('max_retries', 3)
         
+        print(f"📋 [HOT_RELOAD] Request parameters: with_error_recovery={with_error_recovery}, max_retries={max_retries}")
+        
         # Trigger hot reload
+        print("🚀 [HOT_RELOAD] Triggering Flutter hot reload...")
         result = flutter_manager.hot_reload(
             with_error_recovery=with_error_recovery,
             max_retries=max_retries
         )
         
+        print(f"📊 [HOT_RELOAD] Hot reload result: {result}")
+        
         if result.get("error"):
+            print(f"❌ [HOT_RELOAD] Hot reload failed with error: {result.get('error')}")
             return jsonify(result), 400
         
+        print("✅ [HOT_RELOAD] Hot reload completed successfully")
         return jsonify(result)
     
     except Exception as e:
+        print(f"💥 [HOT_RELOAD] Exception during hot reload: {str(e)}")
         return jsonify({"error": f"Hot reload failed: {str(e)}"}), 500
 
 

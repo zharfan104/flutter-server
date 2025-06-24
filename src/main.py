@@ -35,7 +35,7 @@ def print_startup_banner():
     print("🚀 Flutter Server (Modular)")
     print("==========================")
     print("Starting Flask server on port 5000...")
-    print("Flutter auto-start disabled - start manually via web interface")
+    print("Auto-checking Flutter status and starting if needed...")
     print("Access the web interface at: http://localhost:5000")
     print()
 
@@ -177,27 +177,42 @@ def register_logs_api(app: Flask, registry: ServiceRegistry):
             })
 
 
-def auto_start_flutter_if_needed(registry: ServiceRegistry):
-    """Auto-start Flutter development server if configured"""
+def check_and_start_flutter(registry: ServiceRegistry):
+    """Check Flutter status and start if not running"""
     flutter_manager = registry.get('flutter_manager')
     monitoring_available = registry.get('monitoring_available')
     
     try:
-        # Check if port 8080 is available
+        # First check if Flutter is already running by checking the manager status
+        if flutter_manager.is_running and flutter_manager.flutter_process:
+            if flutter_manager.flutter_process.poll() is None:
+                print("✅ Flutter is already running")
+                return
+            else:
+                print("🔄 Flutter process was terminated, restarting...")
+                flutter_manager.is_running = False
+                flutter_manager.flutter_process = None
+        
+        # Check if port 8080 is in use by another process
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(1)
-        port_available = sock.connect_ex(('localhost', 8080)) != 0
+        port_in_use = sock.connect_ex(('localhost', 8080)) == 0
         sock.close()
         
-        if not port_available:
-            print("⚠️ Port 8080 is already in use. Attempting to free it...")
-            subprocess.run(["pkill", "-9", "-f", "dart"], stderr=subprocess.DEVNULL)
-            time.sleep(1)
+        if port_in_use:
+            print("📡 Port 8080 is in use - checking if it's our Flutter process...")
+            # If port is in use but our manager says Flutter isn't running,
+            # it might be from a previous session or another process
+            if not flutter_manager.is_running:
+                print("⚠️ Port 8080 in use by unknown process - Flutter may already be running externally")
+                return
         
+        print("🚀 Starting Flutter development server...")
         result = flutter_manager.start_flutter()
+        
         if result.get('error'):
-            print(f"⚠️ Flutter auto-start failed: {result['error']}")
-            print("You can still start Flutter manually via the web interface or API")
+            print(f"❌ Flutter start failed: {result['error']}")
+            print("💡 You can start Flutter manually via the web interface")
             
             if monitoring_available and registry.has('monitoring'):
                 monitoring = registry.get('monitoring')
@@ -211,17 +226,17 @@ def auto_start_flutter_if_needed(registry: ServiceRegistry):
                                },
                                tags=["startup", "flutter", "failed"])
                 except Exception as e:
-                    print(f"Warning: Could not log Flutter auto-start failure: {e}")
+                    print(f"Warning: Could not log Flutter failure: {e}")
         else:
-            print(f"✅ Flutter development server starting (PID: {result.get('pid')})")
-            print("Waiting for Flutter to initialize...")
+            print(f"✅ Flutter started successfully (PID: {result.get('pid')})")
+            print("⏳ Waiting for Flutter to initialize...")
             
             if monitoring_available and registry.has('monitoring'):
                 monitoring = registry.get('monitoring')
                 logger = monitoring['logger']
                 try:
                     from src.utils.advanced_logger import LogCategory
-                    logger.info(LogCategory.FLUTTER, "Flutter development server auto-started",
+                    logger.info(LogCategory.FLUTTER, "Flutter development server started",
                                context={
                                    "pid": result.get('pid'),
                                    "port": 8080,
@@ -229,21 +244,22 @@ def auto_start_flutter_if_needed(registry: ServiceRegistry):
                                },
                                tags=["startup", "flutter", "success"])
                 except Exception as e:
-                    print(f"Warning: Could not log Flutter auto-start success: {e}")
+                    print(f"Warning: Could not log Flutter success: {e}")
             
-            # Give Flutter a moment to start up
-            time.sleep(2)
+            # Give Flutter time to start up
+            time.sleep(3)
+            print("🎯 Flutter should now be accessible at http://localhost:8080")
             
     except Exception as e:
-        print(f"⚠️ Failed to auto-start Flutter: {str(e)}")
-        print("You can still start Flutter manually via the web interface or API")
+        print(f"❌ Error checking/starting Flutter: {str(e)}")
+        print("💡 You can start Flutter manually via the web interface")
         
         if monitoring_available and registry.has('monitoring'):
             monitoring = registry.get('monitoring')
             error_analyzer = monitoring['error_analyzer']
             error_analyzer.analyze_error(
                 component="flutter_startup",
-                operation="auto_start_flutter",
+                operation="check_and_start_flutter",
                 message=str(e),
                 context={
                     "manual_start_available": True,
@@ -296,15 +312,19 @@ def main():
     # 5. Log startup info
     log_startup_info(registry)
     
-    # 6. Auto-start Flutter disabled for simplicity
-    print("⏭️ Auto-start Flutter disabled - use web interface to start manually")
+    # 6. Check and start Flutter if needed
+    check_and_start_flutter(registry)
     
     # 7. Log ready info
     log_ready_info(registry)
     
+    # 8. Display final status
+    flutter_manager = registry.get('flutter_manager')
+    flutter_status = "🟢 Running" if flutter_manager.is_running else "🔴 Not Running"
+    print(f"📊 Final Status - Flutter: {flutter_status}")
     print("🚀 All systems ready!")
     
-    # 8. Start server
+    # 9. Start server
     app.run(host='0.0.0.0', port=5000, debug=True)
 
 
