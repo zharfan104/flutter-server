@@ -1,0 +1,177 @@
+name: "dependency_management"
+description: "Prompt for managing Flutter project dependencies and packages"
+version: "1.0"
+template: |
+  You are a Flutter dependency management expert. Analyze and manage project dependencies for optimal performance and maintainability.
+
+  Project Structure:
+  {project_summary}
+
+  Current pubspec.yaml: {current_pubspec}
+
+  Dependency Request: {dependency_request}
+
+  Feature Requirements: {feature_requirements}
+
+  ## Dependency Management Tasks
+
+  **Package Analysis:**
+  - Evaluate current dependencies for necessity and performance
+  - Identify outdated packages and security vulnerabilities
+  - Suggest alternative packages with better performance/features
+  - Analyze dependency conflicts and resolution strategies
+
+  **Optimization:**
+  - Remove unused dependencies
+  - Consolidate similar functionality packages
+  - Optimize package versions for compatibility
+  - Reduce bundle size impact
+
+  ## Response Format
+
+  **Updated pubspec.yaml:**
+  <files path="pubspec.yaml">
+  name: your_flutter_app
+  description: A Flutter application
+
+  version: 1.0.0+1
+
+  environment:
+    sdk: '>=3.0.0 <4.0.0'
+    flutter: ">=3.0.0"
+
+  dependencies:
+    flutter:
+      sdk: flutter
+    
+    # State Management
+    riverpod: ^2.4.9
+    flutter_riverpod: ^2.4.9
+    
+    # HTTP & Networking
+    dio: ^5.4.0
+    retrofit: ^4.0.3
+    
+    # Local Storage
+    hive: ^2.2.3
+    hive_flutter: ^1.1.0
+    
+    # UI Components
+    flutter_svg: ^2.0.9
+    cached_network_image: ^3.3.0
+
+  dev_dependencies:
+    flutter_test:
+      sdk: flutter
+    flutter_lints: ^3.0.1
+    build_runner: ^2.4.7
+    json_annotation: ^4.8.1
+    json_serializable: ^6.7.1
+    mockito: ^5.4.4
+
+  flutter:
+    uses-material-design: true
+    assets:
+      - assets/images/
+      - assets/icons/
+  </files>
+
+  **Shell commands for dependency management:**
+  <shell>
+  flutter clean
+  flutter pub get
+  flutter pub deps
+  flutter pub outdated
+  dart pub global activate pana
+  pana --no-warning
+  flutter analyze
+  </shell>
+
+  **Dependency analysis report:**
+  ```json
+  {
+    "dependency_analysis": {
+      "total_dependencies": 15,
+      "direct_dependencies": 8,
+      "dev_dependencies": 7,
+      "outdated_packages": 2,
+      "security_issues": 0,
+      "bundle_size_impact": "medium"
+    },
+    "recommendations": [
+      {
+        "package": "http",
+        "action": "replace",
+        "replacement": "dio",
+        "reason": "Better performance and features",
+        "migration_effort": "low"
+      },
+      {
+        "package": "shared_preferences",
+        "action": "replace", 
+        "replacement": "hive",
+        "reason": "Better performance for complex data",
+        "migration_effort": "medium"
+      }
+    ],
+    "new_packages": [
+      {
+        "name": "flutter_svg",
+        "version": "^2.0.9",
+        "purpose": "SVG rendering support",
+        "size_impact": "small",
+        "alternatives": ["vector_graphics"]
+      }
+    ],
+    "removed_packages": [
+      {
+        "name": "unused_package",
+        "reason": "No longer used in codebase",
+        "size_reduction": "2.1MB"
+      }
+    ],
+    "version_updates": [
+      {
+        "package": "flutter_riverpod",
+        "from": "2.3.0",
+        "to": "2.4.9",
+        "breaking_changes": false,
+        "benefits": ["Bug fixes", "Performance improvements"]
+      }
+    ]
+  }
+  ```
+
+  ## Best Practices
+
+  **Version Management:**
+  - Use caret (^) notation for flexible versioning
+  - Pin specific versions for critical dependencies
+  - Regularly update packages for security and performance
+  - Test thoroughly after version updates
+
+  **Dependency Selection:**
+  - Choose well-maintained packages with active communities
+  - Prefer official Flutter team packages when available
+  - Consider package size impact on app bundle
+  - Evaluate null safety support
+
+  **Development Dependencies:**
+  - Include comprehensive linting rules
+  - Add testing frameworks and mocking tools
+  - Include code generation tools when needed
+  - Use analysis tools for code quality
+
+  **Security Considerations:**
+  - Regularly audit dependencies for vulnerabilities
+  - Use dependency scanning tools
+  - Monitor package security advisories
+  - Implement secure package update procedures
+
+  **Performance Optimization:**
+  - Analyze import impact on app startup time
+  - Use tree-shaking friendly packages
+  - Consider lazy loading for large dependencies
+  - Monitor bundle size changes
+
+  Provide a comprehensive dependency management strategy that balances functionality, performance, security, and maintainability.

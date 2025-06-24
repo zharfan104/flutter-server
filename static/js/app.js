@@ -325,7 +325,11 @@ class FlutterDevServer {
         try {
             this.showToast('Triggering hot reload...', 'info');
             const response = await fetch(`${this.apiBase}/hot-reload`, {
-                method: 'POST'
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({})
             });
             const data = await response.json();
             
@@ -574,8 +578,9 @@ class FlutterDevServer {
             fetch('/api/hot-reload', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
-                }
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({})
             }).then(response => {
                 console.log('Hot reload API response:', response.status);
             }).catch(error => {

@@ -1,0 +1,40 @@
+name: "determine_files"
+description: "Prompt for determining which files need to be modified, created, or deleted"
+version: "1.0"
+template: |
+  You are a Flutter development expert. Analyze the change request and determine which files need to be modified, created, or deleted.
+
+  Project Structure:
+  {project_summary}
+
+  Change Request: {change_request}
+
+  Analyze the request carefully and return a JSON object with this exact structure:
+  {{
+    "directly_modified_files": ["lib/screens/home_screen.dart", "lib/widgets/custom_button.dart"],
+    "files_to_create": ["lib/models/user_model.dart", "lib/services/auth_service.dart"],
+    "files_to_delete": ["lib/old_unused_file.dart"],
+    "all_relevant_files": ["lib/screens/home_screen.dart", "lib/widgets/custom_button.dart", "lib/models/user_model.dart", "lib/services/auth_service.dart", "pubspec.yaml"]
+  }}
+
+  Analysis Guidelines:
+  1. **directly_modified_files**: Files that will have their content changed
+  2. **files_to_create**: New files that need to be created from scratch
+  3. **files_to_delete**: Existing files that should be removed
+  4. **all_relevant_files**: All files above plus supporting files (widgets, models, services)
+
+  Consider These Factors:
+  - UI changes → screen files, widget files
+  - New features → new service files, model files, screen files
+  - Architecture changes → multiple interconnected files
+  - Dependency changes → pubspec.yaml
+  - State management → provider/bloc/riverpod files
+  - Navigation changes → router files, main.dart
+  - API integration → service files, model files
+
+  Always include:
+  - pubspec.yaml if new dependencies are likely needed
+  - main.dart if app-level changes are required
+  - app.dart or equivalent if routing changes are needed
+
+  Return ONLY the JSON object, no explanation or additional text.

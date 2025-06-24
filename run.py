@@ -226,8 +226,8 @@ def main():
     print("Flutter app: Simple counter app ready for development")
     print("Press Ctrl+C to stop")
     
-    # Import and run the main application
-    from flutter_server import main as run_server
+    # Import and run the new modular application
+    from src.main import main as run_server
     try:
         run_server()
     except KeyboardInterrupt:

@@ -83,7 +83,7 @@ check_prerequisites() {
     fi
     
     # Check if we're in the right directory
-    if [[ ! -f "run.py" ]] || [[ ! -f "flutter_server.py" ]]; then
+    if [[ ! -f "run.py" ]] || [[ ! -d "src" ]]; then
         print_error "Please run this script from the flutter-server directory."
         exit 1
     fi
@@ -91,7 +91,7 @@ check_prerequisites() {
     # Check if poetry.lock exists
     if [[ ! -f "poetry.lock" ]]; then
         print_warning "poetry.lock not found. Installing dependencies..."
-        poetry install
+        poetry install --no-root
     fi
     
     print_status "Prerequisites check complete!"
@@ -103,7 +103,7 @@ start_server() {
     
     # Ensure Poetry environment is set up
     print_status "Setting up Poetry environment..."
-    poetry install --no-dev 2>/dev/null || poetry install
+    poetry install --no-dev --no-root 2>/dev/null || poetry install --no-root
     
     print_status "Starting server with Poetry..."
     print_status "Server will be available at: http://localhost:5000"

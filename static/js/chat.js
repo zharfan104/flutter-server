@@ -497,21 +497,8 @@ class ChatManager {
         this.showStreamingIndicator('Connecting to AI...');
         
         try {
-            // Create SSE connection
-            const eventSource = new EventSource('/api/stream/chat', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    message: message,
-                    conversation_id: this.currentConversationId,
-                    user_id: 'user'
-                })
-            });
-            
-            // Note: EventSource doesn't support POST directly, so we need to use fetch with SSE
-            const response = await fetch('/api/stream/chat', {
+            // EventSource doesn't support POST, so we use fetch with SSE streaming
+            const response = await fetch('/api/chat/stream', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1218,8 +1205,9 @@ class ChatManager {
             fetch('/api/hot-reload', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
-                }
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({})
             }).catch(error => {
                 console.log('Hot reload API call failed (this is normal):', error);
             });

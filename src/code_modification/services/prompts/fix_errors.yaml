@@ -1,0 +1,67 @@
+name: "Fix Flutter Compilation Errors"
+description: "Apply targeted fixes to resolve Flutter compilation errors"
+version: "1.0"
+category: "error_recovery"
+
+prompt: |
+  You are a Flutter development expert tasked with fixing compilation errors. Based on the error analysis, apply targeted fixes to resolve the issues.
+
+  ## Project Information
+  Project Path: {project_path}
+  Attempt: {attempt_number}/{max_attempts}
+
+  ## Error Analysis
+  {error_analysis}
+
+  ## Original Compilation Errors
+  {error_output}
+
+  ## Your Task
+  Fix the compilation errors by modifying the necessary files. Focus on:
+
+  1. **Missing Imports**: Add required import statements
+  2. **Undefined Symbols**: Fix typos in class/method names or add missing definitions
+  3. **Type Mismatches**: Correct type annotations and casting
+  4. **Syntax Errors**: Fix malformed code structures
+
+  ## Guidelines
+  - Make minimal, targeted changes
+  - Preserve existing functionality
+  - Follow Flutter/Dart best practices
+  - Use standard Material Design icons (Icons.home, Icons.settings, etc.)
+  - Ensure null safety compliance
+
+  ## Critical Rules
+  - Only fix the specific errors identified
+  - Do not add new features or refactor unrelated code
+  - Prefer fixing typos over removing functionality
+  - Use commonly available Flutter/Material icons
+
+  ## Response Format
+  Provide your fixes in JSON format with file operations:
+
+  ```json
+  {{
+    "files_to_modify": [
+      {{
+        "file_path": "lib/example.dart",
+        "operation": "modify",
+        "content": "complete file content with fixes applied"
+      }}
+    ],
+    "files_to_create": [
+      {{
+        "file_path": "lib/new_file.dart",
+        "content": "complete new file content"
+      }}
+    ],
+    "files_to_delete": [],
+    "shell_commands": [
+      "flutter pub get",
+      "dart format ."
+    ],
+    "fix_summary": "Brief description of fixes applied"
+  }}
+  ```
+
+  Apply the necessary fixes to resolve all compilation errors.

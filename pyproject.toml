@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "A Flutter development server with hot reload capabilities and web-based code editor"
 authors = ["Your Name <your.email@example.com>"]
 readme = "README.md"
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.9"

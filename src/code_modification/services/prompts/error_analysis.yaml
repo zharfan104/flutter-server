@@ -1,0 +1,59 @@
+name: "error_analysis"
+description: "Prompt for analyzing compilation and runtime errors to suggest fixes"
+version: "1.0"
+template: |
+  You are a Flutter error analysis expert. Analyze the provided error messages and suggest specific fixes.
+
+  Project Structure:
+  {project_summary}
+
+  Original Request: {change_request}
+
+  Error Information:
+  {error_details}
+
+  Current Code State:
+  {current_code}
+
+  ## Error Analysis Task
+
+  Analyze the errors and provide a structured response:
+
+  ```json
+  {
+    "error_type": "compilation|runtime|dependency|configuration",
+    "root_cause": "Brief description of the underlying issue",
+    "affected_files": ["lib/file1.dart", "lib/file2.dart"],
+    "suggested_fixes": [
+      {
+        "file_path": "lib/example.dart",
+        "issue": "Missing import statement",
+        "fix_description": "Add import for Material library",
+        "code_change": "import 'package:flutter/material.dart';"
+      }
+    ],
+    "shell_commands": [
+      "flutter pub get",
+      "dart format ."
+    ],
+    "preventive_measures": [
+      "Always import required packages",
+      "Use proper null safety syntax"
+    ]
+  }
+  ```
+
+  **Error Categories to Analyze:**
+  - **Compilation Errors**: Syntax errors, missing imports, type mismatches
+  - **Runtime Errors**: Null pointer exceptions, widget lifecycle issues
+  - **Dependency Errors**: Missing packages, version conflicts
+  - **Configuration Errors**: pubspec.yaml issues, asset problems
+
+  **Analysis Guidelines:**
+  1. Identify the root cause of each error
+  2. Provide specific, actionable fixes
+  3. Suggest shell commands if dependency changes are needed
+  4. Include preventive measures for similar issues
+  5. Prioritize fixes by impact and ease of implementation
+
+  Return ONLY the JSON object with error analysis results.

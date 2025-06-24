@@ -740,7 +740,10 @@ class CodeEditor {
         
         const poll = async () => {
             try {
-                const response = await fetch(`/api/modify-status/${requestId}`);
+                // DEPRECATED: This endpoint no longer exists in modular backend
+                // const response = await fetch(`/api/modify-status/${requestId}`);
+                // Using streaming instead - this function is deprecated
+                throw new Error('Deprecated function - use streaming instead');
                 const status = await response.json();
                 
                 if (!response.ok) {
