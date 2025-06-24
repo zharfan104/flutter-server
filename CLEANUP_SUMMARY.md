@@ -111,10 +111,29 @@ Cleaned up unused legacy code from the Flutter development server since we now u
 - ✅ Cleaner, more maintainable codebase focused on SSE streaming
 
 ### Active System:
+### 3. `/code_modification/` Services Cleanup
+**Removed unused orchestration services while preserving hot reload functionality**
+
+#### Removed Services:
+- ❌ **`build_pipeline.py`** - Complex pipeline orchestrator (redundant with streaming)
+- ❌ **`iterative_fixer.py`** - Alternative error fixer (replaced by dart_analysis_fixer)
+- ❌ **`file_operations/`** directory - Empty directory with only __pycache__
+- ❌ **`generation_strategies/`** directory - Empty directory with only __pycache__
+- ❌ **`test_pre_hot_reload_analysis.py`** - Outdated test for removed services
+
+#### Preserved Hot Reload Chain:
+- ✅ **`hot_reload_recovery.py`** - Automatic error fixing during hot reload
+- ✅ **`dart_analysis_fixer.py`** - Comprehensive error recovery system
+- ✅ **`command_executor.py`** - Safe shell command execution
+- ✅ **`error_diff_analyzer.py`** - Error analysis and tracking
+- ✅ **`comprehensive_logger.py`** - Enhanced logging for error recovery
+- ✅ **`flutter_typo_fixer.py`** - Quick typo fixes before LLM processing
+- ✅ **`dart_analysis.py`** - Dart analyzer integration
+
 The codebase now exclusively uses the modern **Server-Sent Events (SSE) streaming architecture** for:
 - Real-time code modifications via `/api/stream/modify-code`
 - Live chat responses via `/api/stream/chat`
-- Hot reload integration with error recovery
+- Hot reload integration with comprehensive error recovery
 - Progress updates and status streaming
 
-**Result**: A streamlined, production-ready Flutter development server with 650+ fewer lines of legacy code.
+**Result**: A streamlined, production-ready Flutter development server with 700+ fewer lines of legacy code while preserving all hot reload and error recovery functionality.
