@@ -233,7 +233,7 @@ class CommandExecutor:
             # Log execution result
             if MONITORING_AVAILABLE:
                 log_level = LogLevel.INFO if success else LogLevel.WARN
-                logger.log(LogCategory.SHELL_CMD, log_level, 
+                logger.log(log_level, LogCategory.SHELL_CMD, 
                           f"Command {'succeeded' if success else 'failed'}: {command_str}",
                           context={
                               "command_type": command_type.value,

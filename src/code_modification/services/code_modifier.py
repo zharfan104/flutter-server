@@ -127,6 +127,7 @@ class CodeModificationService:
                 progress_percent=0.0,
                 metadata={"request_id": request.request_id}
             )
+            print(f"[CodeModifier] Starting code modification request: {request.description}")
             
             # Load project structure
             yield StreamProgress(
@@ -134,8 +135,10 @@ class CodeModificationService:
                 message="Analyzing project structure...",
                 progress_percent=10.0
             )
+            print("[CodeModifier] Loading project structure...")
             
             structure = self._load_project_structure()
+            print(f"[CodeModifier] Project structure loaded. Found {structure.total_files} files")
             
             # Determine which files need modification
             yield StreamProgress(
@@ -149,12 +152,26 @@ class CodeModificationService:
                 all_relevant_files = set(request.target_files)
                 files_to_create = request.files_to_create or []
                 files_to_delete = request.files_to_delete or []
+                
+                print(f"[CodeModifier] Using specified target files:")
+                print(f"  - Directly modified: {list(directly_modified_files)}")
+                print(f"  - All relevant: {list(all_relevant_files)}")
+                print(f"  - Files to create: {files_to_create}")
+                print(f"  - Files to delete: {files_to_delete}")
             else:
+                print("[CodeModifier] Determining relevant files using AI analysis...")
+                
                 # Stream the file determination process
                 async for progress in self._determine_relevant_files_stream(request, structure):
                     yield progress
                 
                 directly_modified_files, all_relevant_files, files_to_create, files_to_delete = await self._determine_relevant_files(request, structure)
+                
+                print(f"[CodeModifier] AI determined files:")
+                print(f"  - Directly modified files: {list(directly_modified_files)}")
+                print(f"  - All relevant files: {list(all_relevant_files)}")
+                print(f"  - Files to create: {files_to_create}")
+                print(f"  - Files to delete: {files_to_delete}")
             
             yield StreamProgress(
                 stage="generating",
@@ -168,9 +185,11 @@ class CodeModificationService:
             )
             
             if not directly_modified_files and not files_to_create and not files_to_delete:
+                error_msg = "No files identified for modification"
+                print(f"[CodeModifier] ERROR: {error_msg}")
                 yield StreamProgress(
                     stage="error",
-                    message="No files identified for modification",
+                    message=error_msg,
                     progress_percent=0.0
                 )
                 return
@@ -181,6 +200,7 @@ class CodeModificationService:
                 message="Loading current file contents...",
                 progress_percent=30.0
             )
+            print(f"[CodeModifier] Loading contents for {len(all_relevant_files)} files...")
             
             current_contents = {}
             for file_path in all_relevant_files:
@@ -188,13 +208,19 @@ class CodeModificationService:
                 if full_path.exists():
                     try:
                         with open(full_path, 'r', encoding='utf-8') as f:
-                            current_contents[file_path] = f.read()
+                            content = f.read()
+                            current_contents[file_path] = content
+                            print(f"[CodeModifier] Loaded {file_path} ({len(content)} chars)")
                     except Exception as e:
+                        error_msg = f"Failed to read {file_path}: {str(e)}"
+                        print(f"[CodeModifier] WARNING: {error_msg}")
                         yield StreamProgress(
                             stage="warning",
-                            message=f"Failed to read {file_path}: {str(e)}",
+                            message=error_msg,
                             progress_percent=30.0
                         )
+                else:
+                    print(f"[CodeModifier] File does not exist (will be created): {file_path}")
             
             # Generate code modifications using the existing method
             yield StreamProgress(
@@ -207,6 +233,7 @@ class CodeModificationService:
                     "files_to_delete": files_to_delete
                 }
             )
+            print("[CodeModifier] Starting AI code generation...")
             
             # Stream the LLM generation process
             streaming_content = {}
@@ -218,11 +245,15 @@ class CodeModificationService:
             project_summary = self.project_analyzer.generate_project_summary()
             all_target_files = list(directly_modified_files) + files_to_create
             
+            print(f"[CodeModifier] Target files for AI generation: {all_target_files}")
+            
             contents_text = "\n\n".join([
                 f"=== {file_path} ===\n{content}"
                 for file_path, content in current_contents.items()
                 if file_path in all_target_files or file_path in current_contents
             ])
+            
+            print(f"[CodeModifier] Prepared content text with {len(contents_text)} characters")
             
             try:
                 system_prompt, user_prompt = self.prompt_loader.get_system_user_prompts(
@@ -234,6 +265,7 @@ class CodeModificationService:
                     files_to_create=json.dumps(files_to_create),
                     files_to_delete=json.dumps(files_to_delete)
                 )
+                print("[CodeModifier] Using system/user prompt format")
             except KeyError:
                 user_prompt = self.prompt_loader.format_prompt(
                     'generate_code',
@@ -245,11 +277,13 @@ class CodeModificationService:
                     files_to_delete=json.dumps(files_to_delete)
                 )
                 system_prompt = None
+                print("[CodeModifier] Using single prompt format")
             
             # Prepare messages
             content = [{"type": "text", "text": user_prompt}]
             if request.images:
-                for image in request.images:
+                print(f"[CodeModifier] Adding {len(request.images)} images to request")
+                for i, image in enumerate(request.images):
                     content.extend([
                         {
                             "type": "image",
@@ -261,8 +295,10 @@ class CodeModificationService:
                         },
                         {"type": "text", "text": "Use this image as a reference."}
                     ])
+                    print(f"[CodeModifier] Added image {i+1} with media type {image['media_type']}")
             
             messages = [{"role": "user", "content": content}]
+            print("[CodeModifier] Starting LLM streaming execution...")
             
             # Stream the response
             async for chunk in self.llm_executor.execute_stream_with_progress(
@@ -278,6 +314,7 @@ class CodeModificationService:
                         # New file started
                         if current_file:
                             streaming_content[current_file] = current_content
+                            print(f"[CodeModifier] Completed generation for {current_file} ({len(current_content)} chars)")
                             yield StreamProgress(
                                 stage="generating",
                                 message=f"Completed {current_file}",
@@ -291,6 +328,7 @@ class CodeModificationService:
                         if file_match:
                             current_file = file_match.group(1).strip()
                             current_content = ""
+                            print(f"[CodeModifier] Started generating {current_file}")
                             yield StreamProgress(
                                 stage="generating",
                                 message=f"Generating {current_file}...",
@@ -301,7 +339,7 @@ class CodeModificationService:
                         # Add to current file content
                         current_content += chunk
                         
-                        # Yield streaming update
+                        # Yield streaming update (less verbose to avoid spam)
                         yield StreamProgress(
                             stage="generating",
                             message=f"Writing code for {current_file or 'analysis'}...",
@@ -316,11 +354,13 @@ class CodeModificationService:
                 
                 elif hasattr(chunk, 'stage'):
                     # StreamProgress from LLM executor
+                    print(f"[CodeModifier] LLM progress: {chunk.stage} - {chunk.message}")
                     yield chunk
             
             # Complete last file if any
             if current_file and current_content:
                 streaming_content[current_file] = current_content
+                print(f"[CodeModifier] Completed final file {current_file} ({len(current_content)} chars)")
                 yield StreamProgress(
                     stage="generating", 
                     message=f"Completed {current_file}",
@@ -329,10 +369,28 @@ class CodeModificationService:
                     metadata={"current_file": current_file, "file_complete": True}
                 )
             
+            print(f"[CodeModifier] Total LLM response length: {len(accumulated_response)} characters")
+            print(f"[CodeModifier] Generated content for {len(streaming_content)} files")
+            
             # Parse the complete response
+            print("[CodeModifier] Parsing modification response...")
             modifications, deletions, shell_commands = self._parse_modification_response(
                 accumulated_response, current_contents, request, set(all_target_files)
             )
+            
+            print(f"[CodeModifier] Parsed results:")
+            print(f"  - Modifications: {len(modifications)} files")
+            print(f"  - Deletions: {len(deletions)} files")
+            print(f"  - Shell commands: {len(shell_commands)} commands")
+            
+            for mod in modifications:
+                print(f"    - {mod.operation}: {mod.file_path} (new: {mod.is_new_file})")
+            
+            for deletion in deletions:
+                print(f"    - Delete: {deletion}")
+                
+            for cmd in shell_commands:
+                print(f"    - Command: {cmd}")
             
             yield StreamProgress(
                 stage="generating",
@@ -346,6 +404,7 @@ class CodeModificationService:
                 message="Validating generated code...",
                 progress_percent=70.0
             )
+            print("[CodeModifier] Starting validation phase...")
             
             # Apply modifications with progress updates
             yield StreamProgress(
@@ -353,13 +412,15 @@ class CodeModificationService:
                 message="Applying code changes...",
                 progress_percent=80.0
             )
+            print("[CodeModifier] Starting application phase...")
             
             modified_files = []
             created_files = []
             errors = []
             
-            for modification in modifications:
+            for i, modification in enumerate(modifications):
                 try:
+                    print(f"[CodeModifier] Applying modification {i+1}/{len(modifications)}: {modification.file_path}")
                     yield StreamProgress(
                         stage="applying",
                         message=f"Writing {modification.file_path}...",
@@ -371,11 +432,15 @@ class CodeModificationService:
                     
                     if modification.is_new_file:
                         created_files.append(modification.file_path)
+                        print(f"[CodeModifier] Created new file: {modification.file_path}")
                     else:
                         modified_files.append(modification.file_path)
+                        print(f"[CodeModifier] Modified existing file: {modification.file_path}")
                         
                 except Exception as e:
-                    errors.append(f"Failed to apply {modification.file_path}: {str(e)}")
+                    error_msg = f"Failed to apply {modification.file_path}: {str(e)}"
+                    print(f"[CodeModifier] ERROR: {error_msg}")
+                    errors.append(error_msg)
             
             # Handle file deletions
             deleted_files = []

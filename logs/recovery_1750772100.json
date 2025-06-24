@@ -1,0 +1,252 @@
+{
+  "session_summary": {
+    "session_id": "dart_fix_1750772100",
+    "start_time": "2025-06-24T20:35:00.266915",
+    "duration_seconds": 39.79,
+    "metrics": {
+      "session_id": "dart_fix_1750772100",
+      "start_time": 1750772100.266915,
+      "end_time": 1750772140.0598352,
+      "total_attempts": 1,
+      "successful_attempts": 1,
+      "failed_attempts": 0,
+      "commands_executed": 3,
+      "fixes_applied": 1,
+      "files_modified": 1,
+      "initial_error_count": 1,
+      "final_error_count": 0,
+      "total_duration": 39.79292011260986,
+      "success": true
+    },
+    "total_attempts": 1,
+    "total_stages": 12,
+    "total_commands": 3,
+    "successful_commands": 1,
+    "failed_commands": 2,
+    "files_modified": 1,
+    "latest_attempt": "AttemptLog(attempt_number=1, stage=<RecoveryStage.ERROR_ANALYSIS: 'error_analysis'>, timestamp=1750772103.369492, duration=33.740217447280884, success=True, error_count_before=1, error_count_after=0, commands_executed=['dart fix --apply', 'dart format .'], fixes_applied=1, files_modified=['lib/main.dart'], error_message=None, context=None)"
+  },
+  "attempt_logs": [
+    {
+      "attempt_number": 1,
+      "stage": "RecoveryStage.ERROR_ANALYSIS",
+      "timestamp": 1750772103.369492,
+      "duration": 33.740217447280884,
+      "success": true,
+      "error_count_before": 1,
+      "error_count_after": 0,
+      "commands_executed": [
+        "dart fix --apply",
+        "dart format ."
+      ],
+      "fixes_applied": 1,
+      "files_modified": [
+        "lib/main.dart"
+      ],
+      "error_message": null,
+      "context": null
+    }
+  ],
+  "stage_logs": [
+    {
+      "stage": "initialization",
+      "timestamp": 1750772100.2714005,
+      "session_id": "dart_fix_1750772100",
+      "attempt_number": null,
+      "context": {
+        "session_id": "dart_fix_1750772100",
+        "initial_error_count": null,
+        "start_time": "2025-06-24T20:35:00.266915"
+      }
+    },
+    {
+      "stage": "error_capture",
+      "timestamp": 1750772100.274719,
+      "session_id": "dart_fix_1750772100",
+      "attempt_number": null,
+      "context": {}
+    },
+    {
+      "stage": "error_analysis",
+      "timestamp": 1750772103.3554776,
+      "session_id": "dart_fix_1750772100",
+      "attempt_number": null,
+      "context": {
+        "snapshot": {
+          "attempt_number": 0,
+          "total_errors": 1,
+          "total_warnings": 0,
+          "error_categories": {
+            "error": 1,
+            "type_errors": 1,
+            "info": 9
+          },
+          "context": "Initial analysis"
+        }
+      }
+    },
+    {
+      "stage": "initialization",
+      "timestamp": 1750772103.3570087,
+      "session_id": "dart_fix_1750772100",
+      "attempt_number": null,
+      "context": {
+        "session_id": "dart_fix_1750772100",
+        "initial_error_count": 1,
+        "start_time": "2025-06-24T20:35:00.266915"
+      }
+    },
+    {
+      "stage": "command_planning",
+      "timestamp": 1750772103.3727489,
+      "session_id": "dart_fix_1750772100",
+      "attempt_number": 1,
+      "context": {}
+    },
+    {
+      "stage": "command_execution",
+      "timestamp": 1750772103.3727913,
+      "session_id": "dart_fix_1750772100",
+      "attempt_number": 1,
+      "context": {}
+    },
+    {
+      "stage": "fix_generation",
+      "timestamp": 1750772108.0635843,
+      "session_id": "dart_fix_1750772100",
+      "attempt_number": 1,
+      "context": {}
+    },
+    {
+      "stage": "fix_application",
+      "timestamp": 1750772135.807138,
+      "session_id": "dart_fix_1750772100",
+      "attempt_number": 1,
+      "context": {}
+    },
+    {
+      "stage": "error_analysis",
+      "timestamp": 1750772137.1055503,
+      "session_id": "dart_fix_1750772100",
+      "attempt_number": 1,
+      "context": {
+        "snapshot": {
+          "attempt_number": 1,
+          "total_errors": 0,
+          "total_warnings": 0,
+          "error_categories": {
+            "info": 5
+          },
+          "context": "After attempt 1"
+        }
+      }
+    },
+    {
+      "stage": "progress_analysis",
+      "timestamp": 1750772137.1068678,
+      "session_id": "dart_fix_1750772100",
+      "attempt_number": 1,
+      "context": {
+        "diff": {
+          "from_attempt": 0,
+          "to_attempt": 1,
+          "progress_score": 1.0,
+          "regression_score": 0.0,
+          "summary": {
+            "fixed": 1,
+            "errors_fixed": 1,
+            "modified": 1
+          },
+          "changes_count": 2
+        }
+      }
+    },
+    {
+      "stage": "validation",
+      "timestamp": 1750772137.1110418,
+      "session_id": "dart_fix_1750772100",
+      "attempt_number": null,
+      "context": {}
+    },
+    {
+      "stage": "completion",
+      "timestamp": 1750772140.0598533,
+      "session_id": "dart_fix_1750772100",
+      "attempt_number": null,
+      "context": {
+        "session_id": "dart_fix_1750772100",
+        "success": true,
+        "final_error_count": 0,
+        "total_duration": 39.79292011260986,
+        "error_message": null,
+        "metrics": {
+          "session_id": "dart_fix_1750772100",
+          "start_time": 1750772100.266915,
+          "end_time": 1750772140.0598352,
+          "total_attempts": 1,
+          "successful_attempts": 1,
+          "failed_attempts": 0,
+          "commands_executed": 3,
+          "fixes_applied": 1,
+          "files_modified": 1,
+          "initial_error_count": 1,
+          "final_error_count": 0,
+          "total_duration": 39.79292011260986,
+          "success": true
+        }
+      }
+    }
+  ],
+  "command_logs": [
+    {
+      "timestamp": 1750772101.9725864,
+      "session_id": "dart_fix_1750772100",
+      "attempt_number": null,
+      "command": "flutter pub get",
+      "args": [
+        "get"
+      ],
+      "success": false,
+      "exit_code": -1,
+      "execution_time": 1.689767599105835,
+      "timeout": false,
+      "error_message": "Command execution failed: <LogCategory.SHELL_CMD: 'shell_command'>",
+      "context": "Initial pub get",
+      "stdout_length": 0,
+      "stderr_length": 0
+    },
+    {
+      "timestamp": 1750772108.062126,
+      "session_id": "dart_fix_1750772100",
+      "attempt_number": 1,
+      "command": "dart fix --apply",
+      "args": [
+        "--apply"
+      ],
+      "success": false,
+      "exit_code": -1,
+      "execution_time": 4.682251691818237,
+      "timeout": false,
+      "error_message": "Command execution failed: <LogCategory.SHELL_CMD: 'shell_command'>",
+      "context": "Automatic dart fix",
+      "stdout_length": 0,
+      "stderr_length": 0
+    },
+    {
+      "timestamp": 1750772135.8036408,
+      "session_id": "dart_fix_1750772100",
+      "attempt_number": 1,
+      "command": "dart format .",
+      "args": [],
+      "success": true,
+      "exit_code": 0,
+      "execution_time": 0.7069613933563232,
+      "timeout": false,
+      "error_message": null,
+      "context": "AI-suggested shell command",
+      "stdout_length": 70,
+      "stderr_length": 0
+    }
+  ],
+  "export_timestamp": "2025-06-24T20:35:40.061379"
+}
