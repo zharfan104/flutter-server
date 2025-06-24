@@ -77,7 +77,7 @@
 
 <!-- Main Content Area -->
 <div class="row" style="height: calc(100vh - 200px);">
-    <!-- Flutter App -->
+    <!-- Flutter App with Tabs -->
     <div class="col-lg-8 mb-3">
         <div class="card h-100">
             <div class="card-header d-flex justify-content-between align-items-center py-2">
@@ -94,47 +94,89 @@
                     </button>
                 </div>
             </div>
-            <div class="card-body p-0 position-relative">
-                <div class="position-absolute top-0 start-0 w-100 h-100">
-                    <iframe id="flutter-app" src="/app" 
-                            style="width: 100%; height: 100%; border: none;"
-                            title="Flutter App">
-                        <div class="d-flex align-items-center justify-content-center h-100">
-                            <div class="text-center">
-                                <i class="bi bi-phone-fill text-muted" style="font-size: 3rem;"></i>
-                                <p class="text-muted mt-2">Flutter app will appear here once started.</p>
-                                <button class="btn btn-primary" onclick="startFlutter()">Start Flutter</button>
+            <div class="card-body p-0 d-flex flex-column" style="height: calc(100vh - 260px);">
+                <!-- Tabs -->
+                <ul class="nav nav-tabs px-3 pt-2" id="preview-tabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="app-preview-tab" data-bs-toggle="tab" 
+                                data-bs-target="#app-preview-panel" type="button" role="tab">
+                            <i class="bi bi-phone"></i> App Preview
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="code-generation-tab" data-bs-toggle="tab" 
+                                data-bs-target="#code-generation-panel" type="button" role="tab">
+                            <i class="bi bi-code-slash"></i> Live Code Generation
+                            <span id="code-gen-badge" class="badge bg-danger ms-1" style="display: none;">●</span>
+                        </button>
+                    </li>
+                </ul>
+                
+                <!-- Tab Content -->
+                <div class="tab-content flex-grow-1 overflow-hidden">
+                    <!-- App Preview Tab -->
+                    <div class="tab-pane fade show active h-100" id="app-preview-panel" role="tabpanel">
+                        <div class="position-relative h-100">
+                            <iframe id="flutter-app" src="/app" 
+                                    style="width: 100%; height: 100%; border: none;"
+                                    title="Flutter App">
+                                <div class="d-flex align-items-center justify-content-center h-100">
+                                    <div class="text-center">
+                                        <i class="bi bi-phone-fill text-muted" style="font-size: 3rem;"></i>
+                                        <p class="text-muted mt-2">Flutter app will appear here once started.</p>
+                                        <button class="btn btn-primary" onclick="startFlutter()">Start Flutter</button>
+                                    </div>
+                                </div>
+                            </iframe>
+                    
+                            <!-- Loading overlay -->
+                            <div id="flutter-loading-overlay" 
+                                 class="position-absolute top-0 start-0 w-100 h-100"
+                                 style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); z-index: 10;">
+                                <div class="d-flex align-items-center justify-content-center h-100">
+                                    <div class="text-center">
+                                        <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                        <h6 class="text-primary mb-2">Loading Flutter App...</h6>
+                                        <p class="text-muted small mb-0">Please wait while the app initializes</p>
+                                        
+                                        <!-- Countdown Timer -->
+                                        <div class="mt-3 mb-3">
+                                            <div class="d-flex align-items-center justify-content-center">
+                                                <i class="bi bi-clock text-info me-2"></i>
+                                                <span id="flutter-loading-timer" class="badge bg-info fs-6 px-3 py-2">15s</span>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Progress Bar -->
+                                        <div class="mt-2">
+                                            <div class="progress" style="width: 250px; height: 6px;">
+                                                <div id="flutter-loading-progress" class="progress-bar bg-primary" role="progressbar" style="width: 0%; transition: width 0.5s ease;"></div>
+                                            </div>
+                                            <small class="text-muted mt-1 d-block">Initializing Flutter runtime...</small>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </iframe>
+                    </div>
                     
-                    <!-- Loading overlay -->
-                    <div id="flutter-loading-overlay" 
-                         class="position-absolute top-0 start-0 w-100 h-100"
-                         style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); z-index: 10;">
-                        <div class="d-flex align-items-center justify-content-center h-100">
-                            <div class="text-center">
-                                <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
-                                    <span class="visually-hidden">Loading...</span>
-                                </div>
-                                <h6 class="text-primary mb-2">Loading Flutter App...</h6>
-                                <p class="text-muted small mb-0">Please wait while the app initializes</p>
-                                
-                                <!-- Countdown Timer -->
-                                <div class="mt-3 mb-3">
-                                    <div class="d-flex align-items-center justify-content-center">
-                                        <i class="bi bi-clock text-info me-2"></i>
-                                        <span id="flutter-loading-timer" class="badge bg-info fs-6 px-3 py-2">15s</span>
-                                    </div>
-                                </div>
-                                
-                                <!-- Progress Bar -->
-                                <div class="mt-2">
-                                    <div class="progress" style="width: 250px; height: 6px;">
-                                        <div id="flutter-loading-progress" class="progress-bar bg-primary" role="progressbar" style="width: 0%; transition: width 0.5s ease;"></div>
-                                    </div>
-                                    <small class="text-muted mt-1 d-block">Initializing Flutter runtime...</small>
-                                </div>
+                    <!-- Code Generation Tab -->
+                    <div class="tab-pane fade h-100" id="code-generation-panel" role="tabpanel">
+                        <div class="p-3 h-100 d-flex flex-column">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6 class="mb-0">
+                                    <span id="currentFile" class="text-muted">Waiting for code generation...</span>
+                                </h6>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="clearCodePreview()" title="Clear">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                            <div id="code-preview-container" class="flex-grow-1" style="background: #1e1e1e; border-radius: 8px; overflow: hidden;">
+                                <pre style="background: #1e1e1e; color: #d4d4d4; padding: 15px; margin: 0; height: 100%; overflow-y: auto; font-family: 'Courier New', Consolas, monospace; font-size: 0.9rem;">
+                                    <code id="codePreview"></code>
+                                </pre>
                             </div>
                         </div>
                     </div>
@@ -916,6 +958,76 @@ select#log-category-filter option {
     overflow-wrap: break-word;
     hyphens: auto;
 }
+
+/* Code generation preview styles */
+.typing-cursor {
+    animation: blink 1s infinite;
+    font-weight: bold;
+    color: #0d6efd;
+}
+
+@keyframes blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+}
+
+#code-preview-container pre {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    scrollbar-width: thin;
+    scrollbar-color: #3e3e3e #1e1e1e;
+}
+
+#code-preview-container pre::-webkit-scrollbar {
+    width: 8px;
+}
+
+#code-preview-container pre::-webkit-scrollbar-track {
+    background: #1e1e1e;
+}
+
+#code-preview-container pre::-webkit-scrollbar-thumb {
+    background: #3e3e3e;
+    border-radius: 4px;
+}
+
+#code-preview-container pre::-webkit-scrollbar-thumb:hover {
+    background: #4e4e4e;
+}
+
+/* Tab styles */
+#preview-tabs {
+    border-bottom: 1px solid #dee2e6;
+}
+
+#preview-tabs .nav-link {
+    color: #6c757d;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 0.5rem 1rem;
+}
+
+#preview-tabs .nav-link:hover {
+    color: #495057;
+    border-bottom-color: #dee2e6;
+}
+
+#preview-tabs .nav-link.active {
+    color: #0d6efd;
+    background: none;
+    border-bottom-color: #0d6efd;
+}
+
+/* Badge animation */
+#code-gen-badge {
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
 </style>
 {% endblock %}
 
@@ -936,13 +1048,57 @@ function quickChatMessage(message) {
             messageInput.value = message;
             messageInput.dispatchEvent(new Event('input'));
             // Use ChatManager's sendMessage directly to avoid double event handling
-            window.chatManager.sendMessage();
+            window.chatManager.sendMessageStream();
         }
     } else {
         // Fallback: open chat page in new tab
         const chatUrl = `/chat?message=${encodeURIComponent(message)}`;
         window.open(chatUrl, '_blank');
     }
+}
+
+// Code preview functions
+function updateCodePreview(fileName, content) {
+    document.getElementById('currentFile').textContent = fileName || 'Generating...';
+    const codeEl = document.getElementById('codePreview');
+    // Replace \n with actual line breaks after escaping HTML
+    const formattedContent = escapeHtml(content).replace(/\\n/g, '\n');
+    codeEl.innerHTML = formattedContent + '<span class="typing-cursor">▋</span>';
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function clearCodePreview() {
+    document.getElementById('currentFile').textContent = 'Waiting for code generation...';
+    document.getElementById('codePreview').innerHTML = '';
+}
+
+function switchToCodeGenTab() {
+    const codeGenTab = document.getElementById('code-generation-tab');
+    const codeGenBadge = document.getElementById('code-gen-badge');
+    
+    // Show badge
+    codeGenBadge.style.display = 'inline';
+    
+    // Switch to code generation tab
+    const tab = new bootstrap.Tab(codeGenTab);
+    tab.show();
+}
+
+function switchToAppPreviewTab() {
+    const appPreviewTab = document.getElementById('app-preview-tab');
+    const codeGenBadge = document.getElementById('code-gen-badge');
+    
+    // Hide badge
+    codeGenBadge.style.display = 'none';
+    
+    // Switch to app preview tab
+    const tab = new bootstrap.Tab(appPreviewTab);
+    tab.show();
 }
 
 // Initialize both dashboard and chat functionality

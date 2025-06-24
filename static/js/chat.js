@@ -11,6 +11,7 @@ class ChatManager {
         this.isPolling = false;
         this.isSending = false; // Prevent double sending
         this.currentRequestTimeout = null; // Track current request timeout
+        this.isGeneratingCode = false; // Track if we're generating code
         
         this.init();
     }
@@ -578,24 +579,84 @@ class ChatManager {
     handleStreamEvent(data) {
         console.log('📡 Stream event:', data);
         
+        // Track if we're in code generation mode
+        if (data.stage === 'generating' && data.metadata && data.metadata.current_file) {
+            this.isGeneratingCode = true;
+            
+            // Clear any streaming message in chat
+            if (this.currentStreamingMessage) {
+                const cursor = this.currentStreamingMessage.querySelector('.typing-cursor');
+                if (cursor) cursor.remove();
+                this.currentStreamingMessage = null;
+                this.currentStreamingContent = '';
+            }
+        }
+        
         // Handle different types of stream events
         if (data.stage) {
             // Progress update
             this.updateStreamingProgress(data);
+            
+            // Handle code generation updates
+            if (data.stage === 'generating' && data.metadata) {
+                if (data.metadata.current_file) {
+                    // Switch to code generation tab when we start generating code
+                    if (window.switchToCodeGenTab) {
+                        window.switchToCodeGenTab();
+                    }
+                    
+                    // Update code preview
+                    if (window.updateCodePreview) {
+                        const content = data.partial_content || '';
+                        window.updateCodePreview(data.metadata.current_file, content);
+                    }
+                } else if (data.metadata.chunk && window.updateCodePreview) {
+                    // Append chunk to current code preview
+                    const codeEl = document.getElementById('codePreview');
+                    if (codeEl) {
+                        const currentContent = codeEl.textContent.replace('▋', '');
+                        window.updateCodePreview(data.metadata.current_file || 'Generating...', currentContent + data.metadata.chunk);
+                    }
+                }
+                
+                // Handle file completion
+                if (data.metadata.file_complete && window.updateCodePreview) {
+                    const codeEl = document.getElementById('codePreview');
+                    if (codeEl) {
+                        // Remove cursor and add a newline for next file
+                        codeEl.innerHTML = codeEl.innerHTML.replace('<span class="typing-cursor">▋</span>', '') + '\n\n';
+                    }
+                }
+            }
         } else if (data.event_type === 'chat_response') {
-            // Final chat response - but don't add again if we've been streaming
-            if (!this.currentStreamingMessage) {
+            // For chat response, show it immediately without streaming if we're generating code
+            if (this.isGeneratingCode || data.requires_code_modification) {
                 this.handleChatResponse(data);
             } else {
-                // Just finalize the streaming message
-                this.finalizeStreamingMessage(data);
+                // Otherwise, handle normally
+                if (!this.currentStreamingMessage) {
+                    this.handleChatResponse(data);
+                } else {
+                    // Just finalize the streaming message
+                    this.finalizeStreamingMessage(data);
+                }
             }
         } else if (data.event_type === 'result') {
             // Code modification result
             this.handleCodeModificationResult(data);
+            this.isGeneratingCode = false; // Reset flag
+            
+            // Switch back to app preview after a delay if successful
+            if (data.success && window.switchToAppPreviewTab) {
+                setTimeout(() => {
+                    window.switchToAppPreviewTab();
+                }, 3000);
+            }
         } else if (data.event_type === 'text') {
-            // Text chunk for real-time streaming
-            this.appendStreamingText(data.text);
+            // Only append streaming text if we're NOT generating code
+            if (!this.isGeneratingCode) {
+                this.appendStreamingText(data.text);
+            }
         }
     }
     
@@ -615,8 +676,8 @@ class ChatManager {
             progressBar.setAttribute('aria-valuenow', progress.progress_percent);
         }
         
-        // Show partial content if available
-        if (progress.partial_content) {
+        // Show partial content if available (but not if we're generating code)
+        if (progress.partial_content && !this.isGeneratingCode) {
             this.showPartialContent(progress.partial_content);
         }
         
@@ -627,6 +688,13 @@ class ChatManager {
                 break;
             case 'generating':
                 this.setIndicatorColor('primary');
+                // Update status if in code generation
+                if (progress.metadata && progress.metadata.current_file) {
+                    const statusText = `Generating ${progress.metadata.current_file}...`;
+                    if (statusText) {
+                        indicator.querySelector('.processing-status').textContent = statusText;
+                    }
+                }
                 break;
             case 'applying':
                 this.setIndicatorColor('warning');
@@ -670,7 +738,21 @@ class ChatManager {
         
         // Handle code modification if needed
         if (data.requires_code_modification) {
-            this.showStreamingIndicator('🔧 Starting code modifications...');
+            // Just show a simple status, not streaming indicator
+            const indicator = document.getElementById('typing-indicator');
+            const statusText = indicator.querySelector('.processing-status');
+            if (statusText) {
+                statusText.textContent = '🔧 Generating code...';
+            }
+            indicator.style.display = 'block';
+            
+            // Switch to code generation tab
+            if (window.switchToCodeGenTab) {
+                window.switchToCodeGenTab();
+            }
+            
+            // Set flag to prevent streaming in chat
+            this.isGeneratingCode = true;
         }
     }
     
@@ -688,6 +770,9 @@ class ChatManager {
         
         this.hideStreamingIndicator();
         this.setLoadingState(false);
+        
+        // Reset code generation flag
+        this.isGeneratingCode = false;
     }
     
     showStreamingIndicator(message) {
