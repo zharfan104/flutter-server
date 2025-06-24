@@ -62,26 +62,6 @@ class FlutterManager:
                 subprocess.run(["flutter", "create", "project"], cwd=os.getcwd(), check=True)
                 print("Flutter project created!")
     
-    def git_pull(self):
-        """Pull latest changes from repository"""
-        if not self.repo_url:
-            return {"error": "No repository configured"}
-        
-        try:
-            print("Pulling latest changes...")
-            result = subprocess.run(
-                ["git", "pull", "origin", "main"], 
-                cwd=self.project_path, 
-                capture_output=True, 
-                text=True, 
-                check=True
-            )
-            print(f"Git pull output: {result.stdout}")
-            return {"status": "success", "output": result.stdout}
-        except subprocess.CalledProcessError as e:
-            print(f"Git pull failed: {e.stderr}")
-            return {"error": f"Git pull failed: {e.stderr}"}
-    
     def start_flutter(self):
         """Start Flutter development server with hot reload"""
         if self.flutter_process:
@@ -485,41 +465,9 @@ except Exception as e:
 # Initialize chat manager
 from chat.chat_manager import chat_manager
 
-# Initialize advanced logging and monitoring systems
-try:
-    from utils.advanced_logger import logger, LogCategory, RequestTracker
-    from utils.performance_monitor import performance_monitor
-    from utils.request_tracer import tracer
-    from utils.error_analyzer import error_analyzer
-    
-    # Start performance monitoring
-    performance_monitor.start_monitoring()
-    
-    # Log system startup
-    logger.info(LogCategory.SYSTEM, "Flutter Development Server starting up",
-               context={
-                   "project_path": str(flutter_manager.project_path),
-                   "monitoring_enabled": True,
-                   "performance_tracking": True
-               },
-               tags=["startup", "initialization"])
-    
-    ADVANCED_MONITORING = True
-    print("✅ Advanced monitoring and logging initialized")
-    
-except ImportError as e:
-    print(f"⚠️ Advanced monitoring not available: {e}")
-    ADVANCED_MONITORING = False
 
 # API Routes - all prefixed with /api
-@app.route('/api/health', methods=['GET'])
-def health():
-    return jsonify({"status": "healthy", "flutter": flutter_manager.get_status()})
 
-@app.route('/api/start', methods=['POST'])
-def start_flutter():
-    result = flutter_manager.start_flutter()
-    return jsonify(result)
 
 @app.route('/api/status', methods=['GET'])
 def get_status():
@@ -530,44 +478,7 @@ def hot_reload():
     result = flutter_manager.hot_reload()
     return jsonify(result)
 
-@app.route('/api/files', methods=['PUT'])
-def update_file():
-    data = request.json
-    file_path = data.get('file_path')
-    content = data.get('content')
-    auto_reload = data.get('auto_reload', True)
-    
-    if not file_path or content is None:
-        return jsonify({"error": "file_path and content required"}), 400
-    
-    result = flutter_manager.update_file(file_path, content)
-    
-    if auto_reload and flutter_manager.is_running:
-        time.sleep(0.5)
-        reload_result = flutter_manager.hot_reload()
-        result['reload'] = reload_result
-    
-    return jsonify(result)
 
-@app.route('/api/test-flutter', methods=['GET'])
-def test_flutter():
-    """Test if we can reach Flutter directly"""
-    import requests
-    try:
-        response = requests.get('http://127.0.0.1:8080', timeout=5)
-        return jsonify({
-            "status": "success",
-            "flutter_reachable": True,
-            "status_code": response.status_code,
-            "content_length": len(response.text),
-            "headers": dict(response.headers)
-        })
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "flutter_reachable": False,
-            "error": str(e)
-        })
 
 @app.route('/api/logs', methods=['GET'])
 def get_logs():
@@ -625,21 +536,6 @@ def get_logs():
             "error": f"Failed to get monitoring logs: {str(e)}"
         })
 
-@app.route('/api/git-pull', methods=['POST'])
-def git_pull_and_reload():
-    """Pull latest changes and trigger hot reload"""
-    result = flutter_manager.git_pull()
-    
-    if result.get("error"):
-        return jsonify(result), 400
-    
-    # Auto hot reload after successful pull if Flutter is running
-    if flutter_manager.is_running:
-        time.sleep(0.5)  # Give git pull time to complete
-        reload_result = flutter_manager.hot_reload()
-        result['hot_reload'] = reload_result
-    
-    return jsonify(result)
 
 @app.route('/api/file/<path:file_path>', methods=['GET'])
 def get_file(file_path):
@@ -882,130 +778,9 @@ def chat_stream():
     except Exception as e:
         return jsonify({"error": f"Failed to start chat streaming: {str(e)}"}), 500
 
-@app.route('/streaming-demo')
-def streaming_demo():
-    """Demo page for streaming functionality"""
-    return render_template('streaming_demo.html')
 
-@app.route('/api/stream/demo', methods=['GET'])
-def stream_demo():
-    """Demo SSE stream for testing"""
-    import json
-    import time
-    
-    def generate_demo_stream():
-        """Generate demo streaming events"""
-        try:
-            # Initial connection
-            yield f"event: connected\ndata: {json.dumps({'message': 'Connected to demo stream'})}\n\n"
-            time.sleep(0.5)
-            
-            # Progress events
-            stages = [
-                ("analyzing", "Analyzing project structure...", 10),
-                ("analyzing", "Determining files to modify...", 25),
-                ("generating", "AI is generating code for main.dart...", 40),
-                ("generating", "AI is creating widget.dart...", 60),
-                ("applying", "Writing files to disk...", 80),
-                ("complete", "Code generation completed!", 100)
-            ]
-            
-            for stage, message, progress in stages:
-                event_data = {
-                    "stage": stage,
-                    "message": message,
-                    "progress_percent": progress,
-                    "metadata": {
-                        "timestamp": time.time(),
-                        "demo": True
-                    }
-                }
-                
-                # Add partial content for generation stages
-                if stage == "generating":
-                    event_data["partial_content"] = f"""
-class MyWidget extends StatelessWidget {{
-  @override
-  Widget build(BuildContext context) {{
-    return Container(
-      child: Text('Generated at {progress}%'),
-    );
-  }}
-}}"""
-                
-                yield f"event: progress\ndata: {json.dumps(event_data)}\n\n"
-                time.sleep(1)  # Simulate processing time
-            
-            # Final result
-            result_data = {
-                "event_type": "result",
-                "success": True,
-                "modified_files": ["lib/main.dart", "lib/widget.dart"],
-                "created_files": ["lib/new_feature.dart"],
-                "message": "Successfully generated 3 files"
-            }
-            yield f"event: result\ndata: {json.dumps(result_data)}\n\n"
-            
-            # Complete event
-            yield f"event: complete\ndata: {json.dumps({'message': 'Demo stream ended'})}\n\n"
-            
-        except Exception as e:
-            error_data = {
-                'error': str(e),
-                'stage': 'error',
-                'message': f'Demo failed: {str(e)}'
-            }
-            yield f"event: error\ndata: {json.dumps(error_data)}\n\n"
-    
-    return Response(
-        generate_demo_stream(),
-        mimetype='text/event-stream',
-        headers={
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'Access-Control-Allow-Origin': '*'
-        }
-    )
 
-@app.route('/api/analyze-project', methods=['POST'])
-def analyze_project_structure():
-    """Analyze Flutter project structure"""
-    try:
-        from code_modification.project_analyzer import FlutterProjectAnalyzer
-        
-        analyzer = FlutterProjectAnalyzer(flutter_manager.project_path)
-        project_summary = analyzer.generate_project_summary()
-        
-        return jsonify({
-            "status": "success",
-            "analysis": project_summary
-        })
-        
-    except Exception as e:
-        return jsonify({"error": f"Analysis failed: {str(e)}"}), 500
 
-@app.route('/api/suggest-files', methods=['POST'])
-def suggest_modification_files():
-    """Suggest files for modification based on description"""
-    try:
-        from code_modification.project_analyzer import FlutterProjectAnalyzer
-        
-        data = request.json
-        description = data.get('description', '')
-        
-        if not description:
-            return jsonify({"error": "Description is required"}), 400
-        
-        analyzer = FlutterProjectAnalyzer(flutter_manager.project_path)
-        suggested_files = analyzer.suggest_files_for_modification(description)
-        
-        return jsonify({
-            "status": "success",
-            "suggested_files": suggested_files
-        })
-        
-    except Exception as e:
-        return jsonify({"error": f"Suggestion failed: {str(e)}"}), 500
 
 @app.route('/api/project-structure', methods=['GET'])
 def get_project_structure():
@@ -1056,161 +831,9 @@ def get_project_structure():
 
 
 
-@app.route('/api/debug/llm-trace/<request_id>', methods=['GET'])
-def get_llm_trace(request_id):
-    """Get detailed LLM interaction trace for a request"""
-    try:
-        from utils.request_tracer import tracer, TraceEventType
-        from utils.advanced_logger import logger, LogCategory
-        
-        trace = tracer.get_trace(request_id)
-        if not trace:
-            return jsonify({"error": "Request trace not found"}), 404
-        
-        # Filter LLM-related events
-        llm_events = trace.get_events_by_type(TraceEventType.LLM_CALL)
-        
-        llm_trace = {
-            "request_id": request_id,
-            "total_llm_calls": len(llm_events),
-            "llm_interactions": []
-        }
-        
-        for event in llm_events:
-            interaction = {
-                "event_id": event.event_id,
-                "timestamp": event.timestamp,
-                "duration_ms": event.duration_ms,
-                "status": event.status.value,
-                "component": event.component,
-                "operation": event.operation,
-                "metadata": event.metadata,
-                "error_info": event.error_info
-            }
-            
-            # Extract LLM-specific information from metadata
-            if "prompt_length" in event.metadata:
-                interaction["prompt_length"] = event.metadata["prompt_length"]
-            if "response_length" in event.metadata:
-                interaction["response_length"] = event.metadata["response_length"]
-            if "model_used" in event.metadata:
-                interaction["model_used"] = event.metadata["model_used"]
-            if "tokens_used" in event.metadata:
-                interaction["tokens_used"] = event.metadata["tokens_used"]
-            
-            llm_trace["llm_interactions"].append(interaction)
-        
-        logger.info(LogCategory.LLM, f"LLM trace requested for {request_id}",
-                   context={"llm_calls": len(llm_events)})
-        
-        return jsonify(llm_trace)
-        
-    except Exception as e:
-        logger.error(LogCategory.SYSTEM, f"Error getting LLM trace: {e}")
-        return jsonify({"error": str(e)}), 500
 
-@app.route('/api/debug/performance-summary', methods=['GET'])
-def get_performance_summary():
-    """Get comprehensive performance summary"""
-    try:
-        from utils.performance_monitor import performance_monitor
-        from utils.request_tracer import tracer
-        from utils.advanced_logger import logger, LogCategory
-        
-        # Get performance monitor summary
-        perf_summary = performance_monitor.get_performance_summary()
-        
-        # Get trace statistics
-        trace_stats = tracer.get_trace_statistics()
-        
-        # Get system resource snapshot
-        system_snapshot = performance_monitor.system_monitor.get_current_snapshot()
-        
-        # Get recent performance alerts
-        recent_alerts = performance_monitor.get_alerts(limit=20, resolved=False)
-        
-        summary = {
-            "system_resources": system_snapshot._asdict() if system_snapshot else None,
-            "performance_metrics": perf_summary,
-            "trace_statistics": trace_stats,
-            "active_alerts": [
-                {
-                    "alert_id": alert.alert_id,
-                    "level": alert.level.value,
-                    "metric_name": alert.metric_name,
-                    "current_value": alert.current_value,
-                    "threshold": alert.threshold,
-                    "message": alert.message,
-                    "timestamp": alert.timestamp.isoformat()
-                }
-                for alert in recent_alerts
-            ],
-            "system_health": {
-                "overall_status": "healthy" if len(recent_alerts) == 0 else "degraded" if len(recent_alerts) < 5 else "critical",
-                "active_alerts_count": len(recent_alerts),
-                "recent_error_rate": trace_stats.get("failed_requests", 0) / max(trace_stats.get("total_requests", 1), 1)
-            }
-        }
-        
-        logger.info(LogCategory.PERFORMANCE, "Performance summary requested",
-                   context={"active_alerts": len(recent_alerts), "trace_count": trace_stats.get("total_requests", 0)})
-        
-        return jsonify(summary)
-        
-    except Exception as e:
-        logger.error(LogCategory.SYSTEM, f"Error getting performance summary: {e}")
-        return jsonify({"error": str(e)}), 500
 
-@app.route('/api/debug/error-analysis', methods=['GET'])
-def get_error_analysis():
-    """Get comprehensive error analysis"""
-    try:
-        from utils.error_analyzer import error_analyzer
-        from utils.advanced_logger import logger, LogCategory
-        
-        # Get error summary
-        error_summary = error_analyzer.get_error_summary()
-        
-        # Get trending errors
-        trending = error_analyzer.get_trending_errors(hours=24)
-        
-        analysis = {
-            "summary": error_summary,
-            "trending": trending,
-            "timestamp": time.time()
-        }
-        
-        logger.info(LogCategory.ERROR, "Error analysis requested",
-                   context={"total_errors": error_summary.get("total_errors", 0)})
-        
-        return jsonify(analysis)
-        
-    except Exception as e:
-        logger.error(LogCategory.SYSTEM, f"Error getting error analysis: {e}")
-        return jsonify({"error": str(e)}), 500
 
-@app.route('/api/modification-history', methods=['GET'])
-def get_modification_history():
-    """Get history of code modifications"""
-    try:
-        from utils.status_tracker import status_tracker
-        
-        # Get all modification tasks
-        all_tasks = status_tracker.get_all_tasks()
-        modification_tasks = {
-            task_id: status_tracker.get_task_summary(task_id)
-            for task_id, task in all_tasks.items()
-            if task.metadata and task.metadata.get("type") == "code_modification"
-        }
-        
-        return jsonify({
-            "status": "success",
-            "history": modification_tasks,
-            "statistics": status_tracker.get_statistics()
-        })
-        
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 # Chat API endpoints
 @app.route('/api/chat/send', methods=['POST'])
@@ -1356,95 +979,6 @@ def chat_clear_conversation(conversation_id):
         return jsonify({"error": f"Failed to clear conversation: {str(e)}"}), 500
 
 
-@app.route('/api/demo/update-counter', methods=['POST'])
-def demo_update_counter():
-    data = request.json
-    message = data.get('message', 'Hello from API!')
-    
-    new_content = f'''
-import 'package:flutter/material.dart';
-
-void main() {{
-  runApp(const MyApp());
-}}
-
-class MyApp extends StatelessWidget {{
-  const MyApp({{super.key}});
-
-  @override
-  Widget build(BuildContext context) {{
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-      ),
-      home: const MyHomePage(title: 'Flutter Hot Reload Demo'),
-    );
-  }}
-}}
-
-class MyHomePage extends StatefulWidget {{
-  const MyHomePage({{super.key, required this.title}});
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}}
-
-class _MyHomePageState extends State<MyHomePage> {{
-  int _counter = 0;
-
-  void _incrementCounter() {{
-    setState(() {{
-      _counter++;
-    }});
-  }}
-
-  @override
-  Widget build(BuildContext context) {{
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(widget.title),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Text(
-              '{message}',
-              style: Theme.of(context).textTheme.headlineLarge,
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'You have pushed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ),
-    );
-  }}
-}}
-'''
-    
-    result = flutter_manager.update_file('lib/main.dart', new_content)
-    
-    if flutter_manager.is_running:
-        time.sleep(0.5)
-        reload_result = flutter_manager.hot_reload()
-        result['reload'] = reload_result
-    
-    return jsonify(result)
 
 # Flutter static assets routing (similar to nginx config)
 @app.route('/canvaskit/<path:path>')
