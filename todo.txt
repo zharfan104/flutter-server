@@ -1,0 +1,4 @@
+- [ ] make sure everything on langfuse
+- [ ] before doing hot reload, lets just do dart analyze first so it easier
+- [ ] hot reload autofixed dart analyze need to be improved
+- [ ] make sure it ok

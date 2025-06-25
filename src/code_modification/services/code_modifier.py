@@ -16,6 +16,7 @@ import subprocess
 from .llm_executor import SimpleLLMExecutor, LLMResponse, StreamProgress
 from .project_analyzer import FlutterProjectAnalyzer, ProjectStructure
 from .prompt_loader import prompt_loader
+from .json_utils import extract_partial_file_operations, extract_shell_commands_from_response
 
 # Import advanced logging and monitoring
 try:
@@ -798,6 +799,7 @@ class CodeModificationService:
         # Combine files to work with
         all_target_files = list(directly_modified_files) + files_to_create
         remaining_files = set(all_target_files)
+        applied_files = set()  # Track files that have been successfully applied
         
         max_retries = request.max_retries
         attempt = 0
@@ -807,12 +809,17 @@ class CodeModificationService:
             print(f"\nGeneration attempt {attempt}/{max_retries}")
             print(f"Remaining files: {len(remaining_files)}")
             
-            # Format current contents for the prompt
+            # Format current contents for the prompt - only include remaining files and context
             contents_text = "\n\n".join([
                 f"=== {file_path} ===\n{content}"
                 for file_path, content in current_contents.items()
-                if file_path in remaining_files or file_path in current_contents
+                if file_path in remaining_files or (file_path in applied_files and len(content) < 1000)  # Include small applied files for context
             ])
+            
+            # Add info about already applied files
+            if applied_files:
+                applied_info = f"\n\n=== ALREADY APPLIED FILES ===\nThe following files have been successfully applied in previous iterations: {', '.join(sorted(applied_files))}\nDo not regenerate these files unless there are dependencies that require updates.\n"
+                contents_text = applied_info + contents_text
             
             # Get system and user prompts separately (v2.0 structure)
             try:
@@ -872,21 +879,54 @@ class CodeModificationService:
                     session_id=request.request_id
                 )
                 
-                # Parse the response to extract file modifications
-                batch_modifications, batch_deletions, batch_commands = self._parse_modification_response(
-                    response.text, current_contents, request, remaining_files
-                )
+                # Try progressive parsing first for better truncation handling
+                try:
+                    progressive_modifications, progressive_commands = await self._parse_and_apply_progressive(
+                        response.text, current_contents, request, remaining_files
+                    )
+                    
+                    if progressive_modifications:
+                        print(f"[CodeModifier] Progressive parsing applied {len(progressive_modifications)} files immediately")
+                        # Use progressive results and track applied files
+                        batch_modifications = progressive_modifications
+                        batch_deletions = []  # Handle deletions separately
+                        batch_commands = progressive_commands
+                        
+                        # Track which files were applied by progressive parsing
+                        for mod in progressive_modifications:
+                            applied_files.add(mod.file_path)
+                            # Update current_contents with the new content
+                            current_contents[mod.file_path] = mod.modified_content
+                    else:
+                        # Fall back to standard parsing
+                        batch_modifications, batch_deletions, batch_commands = self._parse_modification_response(
+                            response.text, current_contents, request, remaining_files
+                        )
+                except Exception as e:
+                    print(f"Progressive parsing failed, using standard parsing: {e}")
+                    # Fall back to standard parsing
+                    batch_modifications, batch_deletions, batch_commands = self._parse_modification_response(
+                        response.text, current_contents, request, remaining_files
+                    )
                 
                 # Add successful modifications
                 modifications.extend(batch_modifications)
                 deletions.extend(batch_deletions)
                 shell_commands.extend(batch_commands)
                 
-                # Remove successfully processed files
+                # Remove successfully processed files from remaining list
                 processed_files = {mod.file_path for mod in batch_modifications}
                 remaining_files -= processed_files
+                applied_files.update(processed_files)  # Track all applied files
                 
                 print(f"Successfully processed {len(processed_files)} files")
+                print(f"Total applied files: {len(applied_files)}, remaining: {len(remaining_files)}")
+                
+                # For non-progressive parsing, also update current_contents
+                # (progressive parsing already updates current_contents)
+                if batch_modifications and not applied_files.intersection(processed_files):
+                    for mod in batch_modifications:
+                        current_contents[mod.file_path] = mod.modified_content
                 
                 if not remaining_files:
                     break
@@ -927,7 +967,75 @@ class CodeModificationService:
         if response_text.strip() == "NO_CHANGES_NEEDED":
             return modifications, deletions, shell_commands
         
-        # Try to parse as JSON first (v2.0 format)
+        # Try progressive parsing first (handles truncated JSON)
+        try:
+            # Use the enhanced JSON extraction directly
+            from .json_utils import extract_partial_file_operations, extract_shell_commands_from_response
+            
+            print(f"[CodeModifier] Trying progressive parsing on {len(response_text)} characters...")
+            
+            # Extract file operations using enhanced parsing
+            file_operations = extract_partial_file_operations(response_text, "sync parsing")
+            extracted_commands = extract_shell_commands_from_response(response_text, "sync parsing")
+            
+            print(f"[CodeModifier] Progressive parsing found {len(file_operations)} file operations")
+            
+            if file_operations:
+                # Convert to modifications format
+                for file_op in file_operations:
+                    operation = file_op.get('operation', 'modify')
+                    file_path = file_op.get('path', '')
+                    content = file_op.get('content', '')
+                    
+                    # Skip invalid operations
+                    if not file_path or not content:
+                        print(f"[CodeModifier] Skipping invalid file operation: missing path or content")
+                        continue
+                    
+                    # Clean up duplicate path issue (e.g., "lib/file.dartlib/file.dart" -> "lib/file.dart")
+                    if file_path.count('/') > 1:
+                        parts = file_path.split('/')
+                        if len(parts) > 2 and parts[-2] == parts[-1].split('.')[0]:
+                            file_path = '/'.join(parts[:-1]) + '.' + parts[-1].split('.')[-1]
+                            print(f"[CodeModifier] Fixed duplicate path to: {file_path}")
+                    
+                    # Skip delete operations in sync context
+                    if operation == 'delete':
+                        deletions.append(file_path)
+                        continue
+                    
+                    # Clean and validate content
+                    cleaned_content = self._clean_file_content(content)
+                    if cleaned_content.strip() == "NO_CHANGES_NEEDED":
+                        continue
+                    
+                    original_content = current_contents.get(file_path, "")
+                    is_new_file = not (self.project_path / file_path).exists() or original_content == ""
+                    validation_passed = self._validate_file_content(file_path, cleaned_content)
+                    
+                    if validation_passed and (cleaned_content != original_content or is_new_file):
+                        modification = FileModification(
+                            file_path=file_path,
+                            original_content=original_content,
+                            modified_content=cleaned_content,
+                            change_description=f"{operation.capitalize()}d from progressive parsing: {request.description[:50]}...",
+                            operation=operation,
+                            is_new_file=is_new_file,
+                            validation_passed=validation_passed
+                        )
+                        modifications.append(modification)
+                        print(f"[CodeModifier] ✅ Progressive: Added {file_path} to modifications")
+                
+                shell_commands.extend(extracted_commands)
+                
+                if modifications:
+                    print(f"[CodeModifier] Progressive parsing succeeded with {len(modifications)} modifications")
+                    return modifications, deletions, shell_commands
+                    
+        except Exception as e:
+            print(f"Progressive parsing failed: {e}")
+        
+        # Try to parse as complete JSON (v2.0 format)
         try:
             json_response = self._parse_json_response(response_text)
             if json_response:
@@ -937,6 +1045,116 @@ class CodeModificationService:
         
         # Fall back to legacy XML-style parsing
         return self._parse_legacy_format(response_text, current_contents, request, target_files)
+    
+    async def _parse_and_apply_progressive(
+        self, 
+        response_text: str, 
+        current_contents: Dict[str, str],
+        request: ModificationRequest,
+        target_files: Set[str] = None
+    ) -> Tuple[List[FileModification], List[str]]:
+        """
+        Progressive parsing that applies files immediately as they're found
+        Handles truncated JSON responses by extracting complete file operations
+        
+        Args:
+            response_text: The LLM response (may be truncated)
+            current_contents: Current file contents
+            request: The modification request
+            target_files: Set of files we're expecting to process
+            
+        Returns:
+            Tuple of (modifications, shell_commands)
+        """
+        modifications = []
+        shell_commands = []
+        
+        print(f"[CodeModifier] Starting progressive parsing on {len(response_text)} chars")
+        
+        # Extract file operations using enhanced JSON parsing
+        file_operations = extract_partial_file_operations(response_text, "progressive parsing")
+        
+        # Extract shell commands
+        extracted_commands = extract_shell_commands_from_response(response_text, "progressive parsing")
+        shell_commands.extend(extracted_commands)
+        
+        print(f"[CodeModifier] Found {len(file_operations)} file operations and {len(extracted_commands)} shell commands")
+        
+        if not file_operations:
+            print(f"[CodeModifier] No file operations found in response")
+            return modifications, shell_commands
+        
+        # Process each file operation immediately
+        for i, file_op in enumerate(file_operations):
+            try:
+                operation = file_op.get('operation', 'modify')
+                file_path = file_op.get('path', '')
+                content = file_op.get('content', '')
+                
+                if not file_path or not content:
+                    print(f"[CodeModifier] Skipping incomplete file operation {i+1}: missing path or content")
+                    continue
+                
+                # Skip if this is a delete operation (handle separately)
+                if operation == 'delete':
+                    print(f"[CodeModifier] Skipping delete operation for now: {file_path}")
+                    continue
+                
+                # Clean up the content
+                cleaned_content = self._clean_file_content(content)
+                
+                # Handle NO_CHANGES_NEEDED for individual files
+                if cleaned_content.strip() == "NO_CHANGES_NEEDED":
+                    print(f"[CodeModifier] Skipping {file_path}: NO_CHANGES_NEEDED")
+                    continue
+                
+                original_content = current_contents.get(file_path, "")
+                is_new_file = not (self.project_path / file_path).exists() or original_content == ""
+                
+                # Validate content completeness for Dart files
+                validation_passed = self._validate_file_content(file_path, cleaned_content)
+                
+                if not validation_passed:
+                    print(f"[CodeModifier] Validation failed for {file_path}, skipping")
+                    continue
+                
+                # Only process if content is different or it's a new file
+                if cleaned_content != original_content or is_new_file:
+                    modification = FileModification(
+                        file_path=file_path,
+                        original_content=original_content,
+                        modified_content=cleaned_content,
+                        change_description=f"{operation.capitalize()}d progressively: {request.description[:50]}...",
+                        operation=operation,
+                        is_new_file=is_new_file,
+                        validation_passed=validation_passed
+                    )
+                    
+                    # Apply the modification immediately
+                    try:
+                        await self._apply_modification(modification)
+                        modifications.append(modification)
+                        
+                        if is_new_file:
+                            print(f"[CodeModifier] ✅ Progressive: Created new file {file_path}")
+                        else:
+                            print(f"[CodeModifier] ✅ Progressive: Modified file {file_path}")
+                        
+                        # Update current_contents to reflect the change
+                        current_contents[file_path] = cleaned_content
+                        
+                    except Exception as e:
+                        print(f"[CodeModifier] ❌ Failed to apply progressive modification to {file_path}: {e}")
+                        # Don't add to modifications list if application failed
+                else:
+                    print(f"[CodeModifier] Skipping {file_path}: content unchanged")
+                    
+            except Exception as e:
+                print(f"[CodeModifier] Error processing file operation {i+1}: {e}")
+                continue
+        
+        print(f"[CodeModifier] Progressive parsing completed: {len(modifications)} files applied")
+        return modifications, shell_commands
     
     def _parse_json_response(self, response_text: str) -> Optional[Dict]:
         """Extract JSON from response text, handling markdown code blocks"""
