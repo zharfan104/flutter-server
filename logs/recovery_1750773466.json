@@ -1,0 +1,356 @@
+{
+  "session_summary": {
+    "session_id": "dart_fix_1750773466",
+    "start_time": "2025-06-24T20:57:46.092750",
+    "duration_seconds": 78.25,
+    "metrics": {
+      "session_id": "dart_fix_1750773466",
+      "start_time": 1750773466.0927503,
+      "end_time": 1750773544.3384144,
+      "total_attempts": 2,
+      "successful_attempts": 1,
+      "failed_attempts": 1,
+      "commands_executed": 4,
+      "fixes_applied": 5,
+      "files_modified": 5,
+      "initial_error_count": 1,
+      "final_error_count": 0,
+      "total_duration": 78.24566411972046,
+      "success": true
+    },
+    "total_attempts": 2,
+    "total_stages": 18,
+    "total_commands": 4,
+    "successful_commands": 1,
+    "failed_commands": 3,
+    "files_modified": 5,
+    "latest_attempt": "AttemptLog(attempt_number=2, stage=<RecoveryStage.ERROR_ANALYSIS: 'error_analysis'>, timestamp=1750773505.7795937, duration=35.570438385009766, success=True, error_count_before=1, error_count_after=0, commands_executed=['dart fix --apply', 'dart fix --apply'], fixes_applied=3, files_modified=['lib/screens/home_screen.dart', 'lib/main.dart', 'lib/screens/login_screen.dart'], error_message=None, context=None)"
+  },
+  "attempt_logs": [
+    {
+      "attempt_number": 1,
+      "stage": "RecoveryStage.ERROR_ANALYSIS",
+      "timestamp": 1750773469.3612123,
+      "duration": 36.416869163513184,
+      "success": false,
+      "error_count_before": 1,
+      "error_count_after": 1,
+      "commands_executed": [
+        "dart fix --apply"
+      ],
+      "fixes_applied": 2,
+      "files_modified": [
+        "lib/main.dart",
+        "lib/screens/login_screen.dart"
+      ],
+      "error_message": null,
+      "context": null
+    },
+    {
+      "attempt_number": 2,
+      "stage": "RecoveryStage.ERROR_ANALYSIS",
+      "timestamp": 1750773505.7795937,
+      "duration": 35.570438385009766,
+      "success": true,
+      "error_count_before": 1,
+      "error_count_after": 0,
+      "commands_executed": [
+        "dart fix --apply",
+        "dart fix --apply"
+      ],
+      "fixes_applied": 3,
+      "files_modified": [
+        "lib/screens/home_screen.dart",
+        "lib/main.dart",
+        "lib/screens/login_screen.dart"
+      ],
+      "error_message": null,
+      "context": null
+    }
+  ],
+  "stage_logs": [
+    {
+      "stage": "initialization",
+      "timestamp": 1750773466.094923,
+      "session_id": "dart_fix_1750773466",
+      "attempt_number": null,
+      "context": {
+        "session_id": "dart_fix_1750773466",
+        "initial_error_count": null,
+        "start_time": "2025-06-24T20:57:46.092750"
+      }
+    },
+    {
+      "stage": "error_capture",
+      "timestamp": 1750773466.096282,
+      "session_id": "dart_fix_1750773466",
+      "attempt_number": null,
+      "context": {}
+    },
+    {
+      "stage": "error_analysis",
+      "timestamp": 1750773469.3429296,
+      "session_id": "dart_fix_1750773466",
+      "attempt_number": null,
+      "context": {
+        "snapshot": {
+          "attempt_number": 0,
+          "total_errors": 1,
+          "total_warnings": 0,
+          "error_categories": {
+            "error": 1,
+            "type_errors": 1,
+            "info": 2
+          },
+          "context": "Initial analysis"
+        }
+      }
+    },
+    {
+      "stage": "initialization",
+      "timestamp": 1750773469.3442264,
+      "session_id": "dart_fix_1750773466",
+      "attempt_number": null,
+      "context": {
+        "session_id": "dart_fix_1750773466",
+        "initial_error_count": 1,
+        "start_time": "2025-06-24T20:57:46.092750"
+      }
+    },
+    {
+      "stage": "command_planning",
+      "timestamp": 1750773469.3647392,
+      "session_id": "dart_fix_1750773466",
+      "attempt_number": 1,
+      "context": {}
+    },
+    {
+      "stage": "command_execution",
+      "timestamp": 1750773469.3647754,
+      "session_id": "dart_fix_1750773466",
+      "attempt_number": 1,
+      "context": {}
+    },
+    {
+      "stage": "fix_generation",
+      "timestamp": 1750773474.228803,
+      "session_id": "dart_fix_1750773466",
+      "attempt_number": 1,
+      "context": {}
+    },
+    {
+      "stage": "fix_application",
+      "timestamp": 1750773504.3606384,
+      "session_id": "dart_fix_1750773466",
+      "attempt_number": 1,
+      "context": {}
+    },
+    {
+      "stage": "error_analysis",
+      "timestamp": 1750773505.7727811,
+      "session_id": "dart_fix_1750773466",
+      "attempt_number": 1,
+      "context": {
+        "snapshot": {
+          "attempt_number": 1,
+          "total_errors": 1,
+          "total_warnings": 0,
+          "error_categories": {
+            "error": 1,
+            "other_errors": 1,
+            "info": 4
+          },
+          "context": "After attempt 1"
+        }
+      }
+    },
+    {
+      "stage": "progress_analysis",
+      "timestamp": 1750773505.7746756,
+      "session_id": "dart_fix_1750773466",
+      "attempt_number": 1,
+      "context": {
+        "diff": {
+          "from_attempt": 0,
+          "to_attempt": 1,
+          "progress_score": 0.0,
+          "regression_score": 0.0,
+          "summary": {
+            "modified": 2,
+            "errors_modified": 1
+          },
+          "changes_count": 2
+        }
+      }
+    },
+    {
+      "stage": "command_planning",
+      "timestamp": 1750773505.7827713,
+      "session_id": "dart_fix_1750773466",
+      "attempt_number": 2,
+      "context": {}
+    },
+    {
+      "stage": "command_execution",
+      "timestamp": 1750773505.7828069,
+      "session_id": "dart_fix_1750773466",
+      "attempt_number": 2,
+      "context": {}
+    },
+    {
+      "stage": "fix_generation",
+      "timestamp": 1750773510.403824,
+      "session_id": "dart_fix_1750773466",
+      "attempt_number": 2,
+      "context": {}
+    },
+    {
+      "stage": "fix_application",
+      "timestamp": 1750773540.0237281,
+      "session_id": "dart_fix_1750773466",
+      "attempt_number": 2,
+      "context": {}
+    },
+    {
+      "stage": "error_analysis",
+      "timestamp": 1750773541.3458745,
+      "session_id": "dart_fix_1750773466",
+      "attempt_number": 2,
+      "context": {
+        "snapshot": {
+          "attempt_number": 2,
+          "total_errors": 0,
+          "total_warnings": 0,
+          "error_categories": {
+            "info": 5
+          },
+          "context": "After attempt 2"
+        }
+      }
+    },
+    {
+      "stage": "progress_analysis",
+      "timestamp": 1750773541.3472857,
+      "session_id": "dart_fix_1750773466",
+      "attempt_number": 2,
+      "context": {
+        "diff": {
+          "from_attempt": 1,
+          "to_attempt": 2,
+          "progress_score": 1.0,
+          "regression_score": 0.0,
+          "summary": {
+            "fixed": 1,
+            "errors_fixed": 1,
+            "modified": 1
+          },
+          "changes_count": 2
+        }
+      }
+    },
+    {
+      "stage": "validation",
+      "timestamp": 1750773541.3513615,
+      "session_id": "dart_fix_1750773466",
+      "attempt_number": null,
+      "context": {}
+    },
+    {
+      "stage": "completion",
+      "timestamp": 1750773544.3384366,
+      "session_id": "dart_fix_1750773466",
+      "attempt_number": null,
+      "context": {
+        "session_id": "dart_fix_1750773466",
+        "success": true,
+        "final_error_count": 0,
+        "total_duration": 78.24566411972046,
+        "error_message": null,
+        "metrics": {
+          "session_id": "dart_fix_1750773466",
+          "start_time": 1750773466.0927503,
+          "end_time": 1750773544.3384144,
+          "total_attempts": 2,
+          "successful_attempts": 1,
+          "failed_attempts": 1,
+          "commands_executed": 4,
+          "fixes_applied": 5,
+          "files_modified": 5,
+          "initial_error_count": 1,
+          "final_error_count": 0,
+          "total_duration": 78.24566411972046,
+          "success": true
+        }
+      }
+    }
+  ],
+  "command_logs": [
+    {
+      "timestamp": 1750773467.7729688,
+      "session_id": "dart_fix_1750773466",
+      "attempt_number": null,
+      "command": "flutter pub get",
+      "args": [
+        "get"
+      ],
+      "success": false,
+      "exit_code": -1,
+      "execution_time": 1.6580958366394043,
+      "timeout": false,
+      "error_message": "Command execution failed: '<=' not supported between instances of 'LogLevel' and 'LogLevel'",
+      "context": "Initial pub get",
+      "stdout_length": 0,
+      "stderr_length": 0
+    },
+    {
+      "timestamp": 1750773474.227387,
+      "session_id": "dart_fix_1750773466",
+      "attempt_number": 1,
+      "command": "dart fix --apply",
+      "args": [
+        "--apply"
+      ],
+      "success": false,
+      "exit_code": -1,
+      "execution_time": 4.855439901351929,
+      "timeout": false,
+      "error_message": "Command execution failed: '<=' not supported between instances of 'LogLevel' and 'LogLevel'",
+      "context": "Automatic dart fix",
+      "stdout_length": 0,
+      "stderr_length": 0
+    },
+    {
+      "timestamp": 1750773510.402179,
+      "session_id": "dart_fix_1750773466",
+      "attempt_number": 2,
+      "command": "dart fix --apply",
+      "args": [
+        "--apply"
+      ],
+      "success": false,
+      "exit_code": -1,
+      "execution_time": 4.61269736289978,
+      "timeout": false,
+      "error_message": "Command execution failed: '<=' not supported between instances of 'LogLevel' and 'LogLevel'",
+      "context": "Automatic dart fix",
+      "stdout_length": 0,
+      "stderr_length": 0
+    },
+    {
+      "timestamp": 1750773540.02044,
+      "session_id": "dart_fix_1750773466",
+      "attempt_number": 2,
+      "command": "dart fix --apply",
+      "args": [],
+      "success": true,
+      "exit_code": 0,
+      "execution_time": 1.7837841510772705,
+      "timeout": false,
+      "error_message": null,
+      "context": "AI-suggested shell command",
+      "stdout_length": 46,
+      "stderr_length": 0
+    }
+  ],
+  "export_timestamp": "2025-06-24T20:59:04.339913"
+}
