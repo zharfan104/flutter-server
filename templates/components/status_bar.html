@@ -1,0 +1,64 @@
+<!-- Status Bar Component -->
+<div class="row mb-3">
+    <div class="col-lg-3 col-md-6 mb-2">
+        <div class="card text-white bg-primary">
+            <div class="card-body py-2">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title mb-0">Flutter Status</h6>
+                        <small id="flutter-status-text">Checking...</small>
+                    </div>
+                    <i class="bi bi-phone-flip"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-3 col-md-6 mb-2">
+        <div class="card text-white bg-success">
+            <div class="card-body py-2">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title mb-0">Hot Reloads</h6>
+                        <small id="reload-count">0</small>
+                    </div>
+                    <i class="bi bi-arrow-clockwise"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-3 col-md-6 mb-2">
+        <div class="card text-white bg-info">
+            <div class="card-body py-2">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title mb-0">AI Assistant</h6>
+                        <small id="ai-status">Ready</small>
+                    </div>
+                    <i class="bi bi-robot"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-3 col-md-6 mb-2">
+        <div class="card text-white bg-warning">
+            <div class="card-body py-2">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title mb-0">Actions</h6>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-sm btn-light" onclick="startFlutter()" title="Start Flutter">
+                                <i class="bi bi-play-circle"></i>
+                            </button>
+                            <button class="btn btn-sm btn-light" onclick="hotReload()" title="Hot Reload">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

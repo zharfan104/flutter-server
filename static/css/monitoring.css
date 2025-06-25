@@ -1,0 +1,345 @@
+/* Advanced Monitoring Dashboard Styles */
+.status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    animation: pulse 2s infinite;
+}
+
+.status-indicator.bg-success {
+    background-color: #28a745 !important;
+}
+
+.status-indicator.bg-warning {
+    background-color: #ffc107 !important;
+}
+
+.status-indicator.bg-danger {
+    background-color: #dc3545 !important;
+}
+
+.status-indicator.bg-secondary {
+    background-color: #6c757d !important;
+    animation: none;
+}
+
+@keyframes pulse {
+    0% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+    100% {
+        opacity: 1;
+    }
+}
+
+.pipeline-steps .step-item {
+    padding: 6px 8px;
+    margin-bottom: 4px;
+    border-radius: 4px;
+    border-left: 3px solid #e9ecef;
+    background: #ffffff;
+    color: #212529 !important;
+    border: 1px solid #e9ecef;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    font-size: 0.8rem;
+    transition: all 0.2s ease;
+}
+
+.pipeline-steps .step-item:hover {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.pipeline-steps .step-item.active {
+    border-left-color: #007bff;
+    background: #f8f9ff;
+    color: #212529 !important;
+    border-color: #007bff;
+}
+
+.pipeline-steps .step-item.completed {
+    border-left-color: #28a745;
+    background: #f8fff8;
+    color: #212529 !important;
+    border-color: #28a745;
+}
+
+.pipeline-steps .step-item.failed {
+    border-left-color: #dc3545;
+    background: #fff8f8;
+    color: #212529 !important;
+    border-color: #dc3545;
+}
+
+.pipeline-steps .step-item strong {
+    color: #212529 !important;
+    font-size: 0.8rem;
+}
+
+.pipeline-steps .step-item .text-muted {
+    color: #6c757d !important;
+    font-size: 0.75rem;
+}
+
+/* Terminal-style log entries - FIXED VERSION */
+.logs-container .log-entry {
+    padding: 3px 8px;
+    margin-bottom: 1px;
+    border-radius: 0;
+    line-height: 1.4;
+    color: #212529 !important;
+    word-wrap: break-word;
+    border-left: 3px solid transparent;
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Courier New', monospace !important;
+    font-size: 0.75rem !important;
+    font-weight: 400;
+    display: block;
+    background: transparent;
+    border: none;
+    white-space: nowrap;
+    overflow-x: auto;
+}
+
+.logs-container .log-entry.log-error {
+    border-left-color: #dc3545 !important;
+    color: #dc3545 !important;
+}
+
+.logs-container .log-entry.log-warn {
+    border-left-color: #ffc107 !important;
+    color: #ff8c00 !important;
+}
+
+.logs-container .log-entry.log-info {
+    border-left-color: #17a2b8 !important;
+    color: #17a2b8 !important;
+}
+
+.logs-container .log-entry.log-debug {
+    border-left-color: #6c757d !important;
+    color: #6c757d !important;
+}
+
+/* All child elements should be inline and inherit color */
+.logs-container .log-entry * {
+    color: inherit !important;
+    font-family: inherit !important;
+    display: inline !important;
+    font-size: inherit !important;
+    line-height: inherit !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    vertical-align: baseline !important;
+}
+
+/* Specific spacing for badges */
+.logs-container .log-entry .badge {
+    margin-right: 4px !important;
+    padding: 2px 4px !important;
+    border-radius: 3px !important;
+    font-size: 0.65rem !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    display: inline !important;
+}
+
+/* Level badges - distinct colors for each level */
+.logs-container .log-entry.log-error .badge:first-of-type,
+.logs-container .log-entry .bg-danger {
+    background-color: #dc3545 !important;
+    color: #ffffff !important;
+}
+
+.logs-container .log-entry.log-warn .badge:first-of-type,
+.logs-container .log-entry .bg-warning {
+    background-color: #fd7e14 !important;
+    color: #ffffff !important;
+}
+
+.logs-container .log-entry.log-info .badge:first-of-type,
+.logs-container .log-entry .bg-info {
+    background-color: #0dcaf0 !important;
+    color: #000000 !important;
+}
+
+.logs-container .log-entry.log-debug .badge:first-of-type,
+.logs-container .log-entry .bg-secondary {
+    background-color: #6c757d !important;
+    color: #ffffff !important;
+}
+
+/* Category badges (FLUTTER, SYSTEM, etc.) - always dark background */
+.logs-container .log-entry .badge:not(:first-of-type),
+.logs-container .log-entry .badge.bg-secondary {
+    background-color: #495057 !important;
+    color: #ffffff !important;
+}
+
+/* Override monitoring content rules for badges specifically */
+#monitoring-content .logs-container .log-entry .badge {
+    color: #ffffff !important;
+}
+
+#monitoring-content .logs-container .log-entry.log-info .badge:first-of-type {
+    background-color: #0dcaf0 !important;
+    color: #000000 !important;
+}
+
+#monitoring-content .logs-container .log-entry .badge:not(:first-of-type) {
+    background-color: #495057 !important;
+    color: #ffffff !important;
+}
+
+/* Ensure all badges have proper contrast */
+.logs-container .log-entry .badge {
+    border: 1px solid rgba(0,0,0,0.1) !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1) !important;
+}
+
+/* Timestamp spacing */
+.logs-container .log-entry .log-timestamp {
+    margin-right: 6px !important;
+    color: #6c757d !important;
+    font-weight: 500 !important;
+}
+
+/* Category badge spacing */
+.logs-container .log-entry .badge + .badge {
+    margin-left: 2px !important;
+}
+
+/* Override monitoring content rules */
+#monitoring-content .logs-container .log-entry.log-error,
+#monitoring-content .logs-container .log-entry.log-error * {
+    color: #dc3545 !important;
+}
+
+#monitoring-content .logs-container .log-entry.log-warn,
+#monitoring-content .logs-container .log-entry.log-warn * {
+    color: #ff8c00 !important;
+}
+
+#monitoring-content .logs-container .log-entry.log-info,
+#monitoring-content .logs-container .log-entry.log-info * {
+    color: #17a2b8 !important;
+}
+
+#monitoring-content .logs-container .log-entry.log-debug,
+#monitoring-content .logs-container .log-entry.log-debug * {
+    color: #6c757d !important;
+}
+
+/* Badge colors override */
+#monitoring-content .logs-container .log-entry .badge {
+    color: #ffffff !important;
+    background-color: currentColor !important;
+}
+
+/* Hover effect */
+.logs-container .log-entry:hover {
+    background-color: rgba(0, 0, 0, 0.03) !important;
+}
+
+/* Force white backgrounds and dark text for all monitoring dashboard form controls */
+#monitoring-content .form-select,
+#monitoring-content .form-control,
+#monitoring-content input,
+#monitoring-content select,
+#monitoring-content textarea {
+    background-color: #ffffff !important;
+    color: #212529 !important;
+    border: 1px solid #ced4da !important;
+}
+
+#monitoring-content .form-select option {
+    background-color: #ffffff !important;
+    color: #212529 !important;
+}
+
+/* Override any dark theme for monitoring dashboard */
+#monitoring-content,
+#monitoring-content .tab-pane,
+#monitoring-content .tab-content {
+    background-color: #ffffff !important;
+    color: #212529 !important;
+}
+
+/* Ensure all text in monitoring dashboard is dark */
+#monitoring-content * {
+    color: #212529 !important;
+}
+
+/* Exception for badges and buttons */
+#monitoring-content .badge {
+    color: #ffffff !important;
+}
+
+#monitoring-content .btn {
+    color: initial !important;
+}
+
+#monitoring-content .text-primary {
+    color: #007bff !important;
+}
+
+#monitoring-content .text-secondary {
+    color: #6c757d !important;
+}
+
+#monitoring-content .text-danger {
+    color: #dc3545 !important;
+}
+
+#monitoring-content .text-success {
+    color: #28a745 !important;
+}
+
+#monitoring-content .text-warning {
+    color: #ffc107 !important;
+}
+
+/* Specific overrides for dropdowns and inputs that might be affected by dark themes */
+select#log-level-filter,
+select#log-category-filter,
+input#log-search {
+    background-color: #ffffff !important;
+    color: #212529 !important;
+    border: 1px solid #ced4da !important;
+    -webkit-appearance: menulist !important;
+    -moz-appearance: menulist !important;
+    appearance: menulist !important;
+}
+
+/* Force option styling */
+select#log-level-filter option,
+select#log-category-filter option {
+    background-color: #ffffff !important;
+    color: #212529 !important;
+}
+
+/* Force all monitoring dashboard elements to use light theme */
+.monitoring-dashboard,
+.monitoring-dashboard * {
+    background-color: inherit !important;
+    color: #212529 !important;
+}
+
+/* Override system dark mode preferences for this specific component */
+@media (prefers-color-scheme: dark) {
+    #monitoring-content,
+    #monitoring-content *,
+    #monitoring-content .form-select,
+    #monitoring-content .form-control {
+        background-color: #ffffff !important;
+        color: #212529 !important;
+        border-color: #ced4da !important;
+    }
+    
+    #monitoring-content .form-select option {
+        background-color: #ffffff !important;
+        color: #212529 !important;
+    }
+}

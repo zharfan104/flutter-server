@@ -161,11 +161,19 @@ class CodeModificationService:
             else:
                 print("[CodeModifier] Determining relevant files using AI analysis...")
                 
-                # Stream the file determination process
-                async for progress in self._determine_relevant_files_stream(request, structure):
-                    yield progress
+                # Stream the file determination process and get results
+                directly_modified_files = None
+                all_relevant_files = None
+                files_to_create = None
+                files_to_delete = None
                 
-                directly_modified_files, all_relevant_files, files_to_create, files_to_delete = await self._determine_relevant_files(request, structure)
+                async for progress_or_result in self._determine_relevant_files_stream(request, structure):
+                    if hasattr(progress_or_result, 'stage'):
+                        # It's a StreamProgress object
+                        yield progress_or_result
+                    else:
+                        # It's the final result tuple
+                        directly_modified_files, all_relevant_files, files_to_create, files_to_delete = progress_or_result
                 
                 print(f"[CodeModifier] AI determined files:")
                 print(f"  - Directly modified files: {list(directly_modified_files)}")
@@ -532,21 +540,130 @@ class CodeModificationService:
             )
     
     async def _determine_relevant_files_stream(self, request: ModificationRequest, structure: ProjectStructure):
-        """Stream progress updates for file determination"""
+        """Stream progress updates for file determination with actual LLM streaming"""
         from .llm_executor import StreamProgress
         
         yield StreamProgress(
             stage="analyzing",
             message="Asking AI to determine relevant files...",
-            progress_percent=25.0
+            progress_percent=22.0
         )
         
-        # This could be enhanced to show LLM streaming during file determination
-        yield StreamProgress(
-            stage="analyzing", 
-            message="AI is analyzing project structure...",
-            progress_percent=30.0
-        )
+        if not self.llm_executor.is_available():
+            # Fallback to simple analysis
+            yield StreamProgress(
+                stage="analyzing",
+                message="LLM not available, using simple analysis...",
+                progress_percent=30.0
+            )
+            suggested_files = self.project_analyzer.suggest_files_for_modification(request.description)
+            yield (set(suggested_files), set(suggested_files), [], [])
+        
+        try:
+            project_summary = self.project_analyzer.generate_project_summary()
+            
+            prompt = self.prompt_loader.format_prompt(
+                'determine_files',
+                project_summary=json.dumps(project_summary, indent=2),
+                change_request=request.description
+            )
+            
+            messages = [{"role": "user", "content": prompt}]
+            
+            yield StreamProgress(
+                stage="analyzing",
+                message="AI is analyzing project structure and requirements...",
+                progress_percent=25.0
+            )
+            
+            # Stream the LLM analysis
+            accumulated_response = ""
+            
+            async for chunk in self.llm_executor.execute_stream_with_progress(messages=messages):
+                if isinstance(chunk, str):
+                    # Text chunk from LLM
+                    accumulated_response += chunk
+                    
+                    # Show streaming analysis
+                    yield StreamProgress(
+                        stage="analyzing",
+                        message="AI is determining which files need modification...",
+                        progress_percent=27.0,
+                        partial_content=chunk,
+                        metadata={
+                            "streaming": True,
+                            "analysis_type": "file_determination",
+                            "chunk": chunk
+                        }
+                    )
+                elif hasattr(chunk, 'stage'):
+                    # StreamProgress from LLM executor
+                    chunk.stage = "analyzing"  # Override stage to maintain consistency
+                    chunk.message = f"File analysis: {chunk.message}"
+                    chunk.progress_percent = min(29.0, chunk.progress_percent * 0.1 + 25.0)  # Scale to 25-29%
+                    yield chunk
+            
+            yield StreamProgress(
+                stage="analyzing",
+                message="Parsing file analysis results...",
+                progress_percent=30.0
+            )
+            
+            # Parse the JSON response using robust extraction
+            from .json_utils import extract_file_operations_from_response
+            result = extract_file_operations_from_response(accumulated_response, "file operations analysis")
+            
+            # The extraction function returns validated data, so we can trust the format
+            directly_modified = set(result.get("directly_modified_files", []))
+            all_relevant = set(result.get("all_relevant_files", []))
+            to_create = result.get("files_to_create", [])
+            to_delete = result.get("files_to_delete", [])
+            
+            # Always add lib/app.dart if it exists
+            app_dart_path = "lib/app.dart"
+            if (self.project_path / app_dart_path).exists():
+                directly_modified.add(app_dart_path)
+                all_relevant.add(app_dart_path)
+            
+            # Always include pubspec.yaml
+            pubspec_path = "pubspec.yaml"
+            if (self.project_path / pubspec_path).exists():
+                all_relevant.add(pubspec_path)
+            
+            # Filter out files that are in existing_changes if provided
+            if request.existing_changes:
+                directly_modified = {f for f in directly_modified 
+                                   if not any(f in ec or ec in f for ec in request.existing_changes)}
+                all_relevant = {f for f in all_relevant 
+                              if not any(f in ec or ec in f for ec in request.existing_changes)}
+                to_create = [f for f in to_create 
+                           if not any(f in ec or ec in f for ec in request.existing_changes)]
+            
+            yield StreamProgress(
+                stage="analyzing",
+                message=f"Identified {len(directly_modified)} files to modify, {len(to_create)} to create, {len(to_delete)} to delete",
+                progress_percent=35.0,
+                metadata={
+                    "files_to_modify": list(directly_modified),
+                    "files_to_create": to_create,
+                    "files_to_delete": to_delete,
+                    "all_relevant": list(all_relevant)
+                }
+            )
+            
+            # Yield the final results as the last item
+            yield (directly_modified, all_relevant, to_create, to_delete)
+                
+        except Exception as e:
+            print(f"Error determining relevant files: {e}")
+            yield StreamProgress(
+                stage="analyzing",
+                message=f"Error in file analysis, using fallback: {str(e)}",
+                progress_percent=30.0
+            )
+            # Fallback to simple analysis
+            suggested_files = self.project_analyzer.suggest_files_for_modification(request.description)
+            yield (set(suggested_files), set(suggested_files), [], [])
     
     
     async def _determine_relevant_files(

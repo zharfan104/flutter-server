@@ -650,30 +650,53 @@ class CodeEditor {
                                 this.updateAIProgress(progress, data.message);
                                 this.logAI(data.message);
                                 
-                                // Handle metadata
-                                if (data.metadata) {
-                                    if (data.metadata.current_file !== currentFile) {
-                                        if (currentFile && accumulatedContent) {
-                                            // Show preview of previous file
-                                            this.showFilePreview(currentFile, accumulatedContent);
-                                        }
-                                        currentFile = data.metadata.current_file;
-                                        accumulatedContent = '';
+                                // Handle different stages
+                                if (data.stage === 'analyzing') {
+                                    // File determination phase
+                                    if (typeof switchToCodeGenTab === 'function') {
+                                        switchToCodeGenTab();
+                                    }
+                                    this.updateAnalysisPreview(data);
+                                    
+                                    // Handle analysis streaming chunks
+                                    if (data.metadata && data.metadata.streaming && data.metadata.chunk) {
+                                        accumulatedContent += data.metadata.chunk;
+                                        this.updateAnalysisPreview(data, accumulatedContent);
                                     }
                                     
-                                    if (data.metadata.text_chunk) {
-                                        accumulatedContent += data.metadata.text_chunk;
-                                        // Update live preview
-                                        this.updateLivePreview(currentFile, accumulatedContent);
+                                } else if (data.stage === 'generating') {
+                                    // Code generation phase - existing logic
+                                    if (data.metadata) {
+                                        if (data.metadata.current_file !== currentFile) {
+                                            if (currentFile && accumulatedContent) {
+                                                // Show preview of previous file
+                                                this.showFilePreview(currentFile, accumulatedContent);
+                                            }
+                                            currentFile = data.metadata.current_file;
+                                            accumulatedContent = '';
+                                        }
+                                        
+                                        if (data.metadata.text_chunk || data.metadata.chunk) {
+                                            const chunk = data.metadata.text_chunk || data.metadata.chunk;
+                                            accumulatedContent += chunk;
+                                            // Update live preview
+                                            this.updateLivePreview(currentFile, accumulatedContent);
+                                        }
                                     }
                                 }
                                 
                                 // Handle completion
                                 if (data.stage === 'complete') {
+                                    if (typeof clearCodePreview === 'function') {
+                                        clearCodePreview();
+                                    }
                                     this.logAI('AI modification completed successfully!');
                                     await this.loadFileTree();
                                     window.flutterDevServer?.showToast('AI modification completed', 'success');
                                 } else if (data.stage === 'error') {
+                                    if (typeof clearCodePreview === 'function') {
+                                        clearCodePreview();
+                                    }
                                     throw new Error(data.message);
                                 }
                             } else if (data.text) {
@@ -704,15 +727,95 @@ class CodeEditor {
      * Show live preview of file being generated
      */
     updateLivePreview(fileName, content) {
-        const previewElement = document.getElementById('ai-preview');
-        if (!previewElement) return;
+        // Update the Live Code Generation tab
+        const currentFileElement = document.getElementById('currentFile');
+        const codePreviewElement = document.getElementById('codePreview');
         
-        // Show last 500 characters with typing effect
-        const preview = content.slice(-500);
-        previewElement.innerHTML = `
-            <div class="text-muted small">Generating ${fileName || 'content'}...</div>
-            <pre class="mt-2 p-2 bg-light rounded"><code>${this.escapeHtml(preview)}<span class="typing-cursor">▋</span></code></pre>
-        `;
+        if (currentFileElement) {
+            currentFileElement.innerHTML = `⚡ Generating ${fileName || 'code'}...`;
+        }
+        
+        if (codePreviewElement) {
+            // Show last 500 characters with typing effect
+            const preview = content.slice(-500);
+            codePreviewElement.innerHTML = `${this.escapeHtml(preview)}<span class="typing-cursor">▋</span>`;
+        }
+        
+        // Also update the deprecated ai-preview element if it exists (backward compatibility)
+        const previewElement = document.getElementById('ai-preview');
+        if (previewElement) {
+            const preview = content.slice(-500);
+            previewElement.innerHTML = `
+                <div class="text-muted small">Generating ${fileName || 'content'}...</div>
+                <pre class="mt-2 p-2 bg-light rounded"><code>${this.escapeHtml(preview)}<span class="typing-cursor">▋</span></code></pre>
+            `;
+        }
+    }
+    
+    /**
+     * Show live preview of file analysis during the determining phase
+     */
+    updateAnalysisPreview(data, accumulatedContent = '') {
+        const currentFileElement = document.getElementById('currentFile');
+        const codePreviewElement = document.getElementById('codePreview');
+        
+        if (currentFileElement) {
+            // Show different messages based on the analysis phase
+            if (data.message.includes('analyzing project structure')) {
+                currentFileElement.innerHTML = `🔍 Analyzing project structure...`;
+            } else if (data.message.includes('determining files')) {
+                currentFileElement.innerHTML = `📋 Determining files to modify...`;
+            } else if (data.message.includes('Identified')) {
+                // Extract file counts from metadata if available
+                const metadata = data.metadata || {};
+                const modifyCount = metadata.files_to_modify ? metadata.files_to_modify.length : 'multiple';
+                const createCount = metadata.files_to_create ? metadata.files_to_create.length : 0;
+                const deleteCount = metadata.files_to_delete ? metadata.files_to_delete.length : 0;
+                currentFileElement.innerHTML = `✅ Found ${modifyCount} files to modify, ${createCount} to create, ${deleteCount} to delete`;
+            } else {
+                currentFileElement.innerHTML = `🔍 ${data.message}`;
+            }
+        }
+        
+        if (codePreviewElement) {
+            if (accumulatedContent) {
+                // Show AI's reasoning during file determination
+                const preview = accumulatedContent.slice(-800); // Show more text for analysis
+                codePreviewElement.innerHTML = `${this.escapeHtml(preview)}<span class="typing-cursor">▋</span>`;
+            } else if (data.metadata && data.metadata.files_to_modify) {
+                // Show the determined file list
+                const files = data.metadata;
+                let output = '// AI Analysis Results\n\n';
+                
+                if (files.files_to_modify && files.files_to_modify.length > 0) {
+                    output += `// Files to modify (${files.files_to_modify.length}):\n`;
+                    files.files_to_modify.forEach(file => {
+                        output += `// - ${file}\n`;
+                    });
+                    output += '\n';
+                }
+                
+                if (files.files_to_create && files.files_to_create.length > 0) {
+                    output += `// Files to create (${files.files_to_create.length}):\n`;
+                    files.files_to_create.forEach(file => {
+                        output += `// + ${file}\n`;
+                    });
+                    output += '\n';
+                }
+                
+                if (files.files_to_delete && files.files_to_delete.length > 0) {
+                    output += `// Files to delete (${files.files_to_delete.length}):\n`;
+                    files.files_to_delete.forEach(file => {
+                        output += `// - ${file}\n`;
+                    });
+                }
+                
+                codePreviewElement.innerHTML = this.escapeHtml(output);
+            } else {
+                // Show the current analysis message
+                codePreviewElement.innerHTML = `// ${data.message}\n// AI is analyzing your Flutter project...<span class="typing-cursor">▋</span>`;
+            }
+        }
     }
     
     /**

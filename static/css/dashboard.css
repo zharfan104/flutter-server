@@ -1,0 +1,96 @@
+/* Dashboard Main Styles */
+
+/* Flutter Loading Overlay Styles */
+#flutter-loading-overlay {
+    transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
+    opacity: 1;
+    visibility: visible;
+}
+
+#flutter-loading-overlay.d-none {
+    opacity: 0;
+    visibility: hidden;
+}
+
+#flutter-loading-overlay .spinner-border {
+    animation: spin 1s linear infinite;
+}
+
+/* Animated progress bar */
+#flutter-loading-overlay .progress-bar {
+    position: relative;
+    overflow: hidden;
+}
+
+#flutter-loading-overlay .progress-bar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    animation: progressShine 2s ease-in-out infinite;
+}
+
+@keyframes progressShine {
+    0% {
+        left: -100%;
+    }
+    100% {
+        left: 100%;
+    }
+}
+
+/* Timer badge animation */
+#flutter-loading-timer {
+    animation: timerPulse 2s ease-in-out infinite;
+}
+
+@keyframes timerPulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+}
+
+/* Enhanced spinner */
+#flutter-loading-overlay .spinner-border {
+    animation: spin 1.5s linear infinite;
+}
+
+/* Tab styles */
+#preview-tabs {
+    border-bottom: 1px solid #dee2e6;
+}
+
+#preview-tabs .nav-link {
+    color: #6c757d;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 0.5rem 1rem;
+}
+
+#preview-tabs .nav-link:hover {
+    color: #495057;
+    border-bottom-color: #dee2e6;
+}
+
+#preview-tabs .nav-link.active {
+    color: #0d6efd;
+    background: none;
+    border-bottom-color: #0d6efd;
+}
+
+/* Badge animation */
+#code-gen-badge {
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
