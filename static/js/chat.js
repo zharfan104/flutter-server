@@ -12,6 +12,8 @@ class ChatManager {
         this.isSending = false; // Prevent double sending
         this.currentRequestTimeout = null; // Track current request timeout
         this.isGeneratingCode = false; // Track if we're generating code
+        this.isAnalyzing = false; // Track if we're analyzing files
+        this.accumulatedAnalysisContent = ''; // Track accumulated analysis content for file determination
         
         this.init();
     }
@@ -631,9 +633,18 @@ class ChatManager {
         console.log('🎯 [FRONTEND] handleStreamEvent called with:', data);
         console.log('🎯 [FRONTEND] Event type:', typeof data, 'Stage:', data?.stage);
         
-        // Track if we're in code generation mode
-        if (data.stage === 'generating' && data.metadata && data.metadata.current_file) {
+        // Track stage transitions and reset content accordingly
+        if (data.stage === 'analyzing' && !this.isAnalyzing) {
+            // Starting analysis phase - reset accumulated content
+            console.log('🔄 [TRANSITION] Starting analysis phase, resetting accumulated content');
+            this.isAnalyzing = true;
+            this.isGeneratingCode = false;
+            this.accumulatedAnalysisContent = '';
+        } else if (data.stage === 'generating' && this.isAnalyzing) {
+            // Transitioning from analysis to generation - preserve analysis but start generation
+            console.log('🔄 [TRANSITION] Moving from analysis to generation phase');
             this.isGeneratingCode = true;
+            this.isAnalyzing = false;
             
             // Clear any streaming message in chat
             if (this.currentStreamingMessage) {
@@ -649,8 +660,36 @@ class ChatManager {
             // Progress update
             this.updateStreamingProgress(data);
             
+            // Handle file determination (analyzing stage)
+            if (data.stage === 'analyzing') {
+                // Switch to code generation tab when analysis starts
+                if (window.switchToCodeGenTab) {
+                    window.switchToCodeGenTab();
+                }
+                
+                // Accumulate analysis content for streaming effect
+                if (window.updateCodePreview) {
+                    // Check multiple sources for streaming content
+                    const newContent = data.partial_content || 
+                                     data.metadata?.chunk || 
+                                     data.metadata?.streaming_content ||
+                                     data.text || 
+                                     '';
+                    
+                    if (newContent) {
+                        // Accumulate the content to create continuous streaming effect
+                        this.accumulatedAnalysisContent += newContent;
+                        console.log('🔍 [ANALYSIS] Accumulated content length:', this.accumulatedAnalysisContent.length);
+                        window.updateCodePreview(null, this.accumulatedAnalysisContent, 'analyzing', data);
+                    } else {
+                        // Handle non-content updates (like progress messages) but keep existing content
+                        window.updateCodePreview(null, this.accumulatedAnalysisContent, 'analyzing', data);
+                    }
+                }
+            }
+            
             // Handle code generation updates
-            if (data.stage === 'generating' && data.metadata) {
+            else if (data.stage === 'generating' && data.metadata) {
                 if (data.metadata.current_file) {
                     // Switch to code generation tab when we start generating code
                     if (window.switchToCodeGenTab) {

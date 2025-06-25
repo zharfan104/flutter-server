@@ -28,7 +28,8 @@
       "WebFetch(domain:github.com)",
       "Bash(mv:*)",
       "Bash(pip install:*)",
-      "Bash(poetry show:*)"
+      "Bash(poetry show:*)",
+      "Bash(node:*)"
     ],
     "deny": []
   }
