@@ -1,2 +1,14 @@
 /project/
 **/__pycache__/
+
+# Environment variables and secrets
+.env
+*.env
+.env.local
+.env.production
+.env.staging
+
+# API keys and secrets (additional protection)
+*api_key*
+*secret*
+*token*
