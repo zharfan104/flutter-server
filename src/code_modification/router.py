@@ -260,6 +260,124 @@ def validate_code():
         }), 500
 
 
+@code_modification_bp.route('/fix-dart-errors', methods=['POST'])
+def fix_dart_errors():
+    """Fix dart analysis errors using SimpleDartAnalysisFixer"""
+    try:
+        from .services.simple_dart_fixer import SimpleDartAnalysisFixer
+        
+        data = request.json if request.json else {}
+        max_attempts = data.get('max_attempts', 5)
+        target_path = data.get('target_path')  # Optional specific path to analyze
+        
+        if not flutter_manager:
+            return jsonify({"error": "Flutter manager not available"}), 500
+        
+        # Create SimpleDartAnalysisFixer
+        dart_fixer = SimpleDartAnalysisFixer(
+            str(flutter_manager.project_path), 
+            max_attempts=max_attempts
+        )
+        
+        # Run fixing synchronously
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            result = loop.run_until_complete(dart_fixer.fix_until_clean())
+            
+            # Convert result to dict
+            result_dict = {
+                "success": result.success,
+                "initial_error_count": result.initial_error_count,
+                "final_error_count": result.final_error_count,
+                "attempts_made": result.attempts_made,
+                "files_processed": result.files_processed,
+                "total_duration": result.total_duration,
+                "error_message": result.error_message
+            }
+            
+            return jsonify(result_dict)
+        
+        finally:
+            loop.close()
+    
+    except Exception as e:
+        return jsonify({"error": f"Dart error fixing failed: {str(e)}"}), 500
+
+
+@code_modification_bp.route('/stream/fix-dart-errors', methods=['POST'])
+def fix_dart_errors_stream():
+    """Stream dart error fixing process using Server-Sent Events"""
+    try:
+        from .services.simple_dart_fixer import SimpleDartAnalysisFixer
+        
+        data = request.json if request.json else {}
+        max_attempts = data.get('max_attempts', 5)
+        target_path = data.get('target_path')
+        
+        if not flutter_manager:
+            return jsonify({"error": "Flutter manager not available"}), 500
+        
+        def generate_fix_stream():
+            try:
+                # Create SimpleDartAnalysisFixer
+                dart_fixer = SimpleDartAnalysisFixer(
+                    str(flutter_manager.project_path), 
+                    max_attempts=max_attempts
+                )
+                
+                # Create event loop for async execution
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                try:
+                    # Send initial status
+                    yield f"data: {json.dumps({'stage': 'starting', 'message': 'Starting dart error fixing...', 'progress_percent': 0})}\n\n"
+                    
+                    # Run the fixing process
+                    async def run_fixing():
+                        return await dart_fixer.fix_until_clean()
+                    
+                    result = loop.run_until_complete(run_fixing())
+                    
+                    # Send progress updates (simplified since we don't have streaming in SimpleDartAnalysisFixer yet)
+                    if result.success:
+                        yield f"data: {json.dumps({'stage': 'complete', 'message': f'Fixed all errors! Processed {len(result.files_processed)} files.', 'progress_percent': 100, 'success': True})}\n\n"
+                    else:
+                        yield f"data: {json.dumps({'stage': 'partial', 'message': f'Fixed {result.initial_error_count - result.final_error_count} of {result.initial_error_count} errors.', 'progress_percent': 90, 'success': False})}\n\n"
+                    
+                    # Send final result
+                    result_dict = {
+                        "stage": "result",
+                        "success": result.success,
+                        "initial_error_count": result.initial_error_count,
+                        "final_error_count": result.final_error_count,
+                        "attempts_made": result.attempts_made,
+                        "files_processed": result.files_processed,
+                        "total_duration": result.total_duration,
+                        "error_message": result.error_message
+                    }
+                    
+                    yield f"data: {json.dumps(result_dict)}\n\n"
+                    
+                finally:
+                    loop.close()
+                    
+            except Exception as e:
+                error_data = {
+                    "stage": "error",
+                    "message": f"Error fixing failed: {str(e)}",
+                    "error": str(e)
+                }
+                yield f"data: {json.dumps(error_data)}\n\n"
+        
+        return Response(generate_fix_stream(), mimetype='text/event-stream')
+    
+    except Exception as e:
+        return jsonify({"error": f"Failed to start dart error fixing stream: {str(e)}"}), 500
+
+
 @code_modification_bp.route('/health', methods=['GET'])
 def health_check():
     """Health check for code modification service"""

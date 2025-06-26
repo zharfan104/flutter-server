@@ -18,6 +18,13 @@ from .project_analyzer import FlutterProjectAnalyzer, ProjectStructure
 from .prompt_loader import prompt_loader
 from .json_utils import extract_partial_file_operations, extract_shell_commands_from_response
 
+# Import simple dart error fixing system
+try:
+    from .simple_dart_fixer import SimpleDartAnalysisFixer, FixResult
+    DART_FIXER_AVAILABLE = True
+except ImportError:
+    DART_FIXER_AVAILABLE = False
+
 # Import advanced logging and monitoring
 try:
     from src.utils.advanced_logger import logger, LogCategory, LogLevel, OperationTracker
@@ -503,6 +510,91 @@ class CodeModificationService:
                     except Exception as e:
                         errors.append(f"Failed to execute command {cmd}: {str(e)}")
             
+            # Run dart analyze to check for errors after modifications
+            yield StreamProgress(
+                stage="analyzing",
+                message="Running dart analyze to check for errors...",
+                progress_percent=90.0,
+                metadata={"checking_errors": True}
+            )
+            
+            analysis_result = await self._run_dart_analyze()
+            print(f"[CodeModifier] Dart analysis completed. Errors found: {len(analysis_result.errors)}")
+            
+            if analysis_result.errors:
+                yield StreamProgress(
+                    stage="fixing",
+                    message=f"Found {len(analysis_result.errors)} errors, starting automatic fixes...",
+                    progress_percent=92.0,
+                    metadata={
+                        "errors_found": len(analysis_result.errors),
+                        "starting_dart_fixer": True
+                    }
+                )
+                
+                # Initialize simple dart error fixer
+                if DART_FIXER_AVAILABLE:
+                    dart_fixer = SimpleDartAnalysisFixer(str(self.project_path), max_attempts=3)
+                    
+                    # Use the simple fixer to fix errors
+                    fix_result = await dart_fixer.fix_until_clean()
+                    
+                    # Report fixing progress
+                    if fix_result.success:
+                        yield StreamProgress(
+                            stage="fixing",
+                            message=f"Fixed {fix_result.initial_error_count - fix_result.final_error_count} errors successfully!",
+                            progress_percent=95.0,
+                            metadata={
+                                "fixes_applied": fix_result.initial_error_count - fix_result.final_error_count,
+                                "files_modified": fix_result.files_processed
+                            }
+                        )
+                    else:
+                        yield StreamProgress(
+                            stage="fixing",
+                            message=f"Fixed {fix_result.initial_error_count - fix_result.final_error_count} of {fix_result.initial_error_count} errors",
+                            progress_percent=94.0,
+                            metadata={
+                                "partial_success": True,
+                                "files_modified": fix_result.files_processed,
+                                "remaining_errors": fix_result.final_error_count
+                            }
+                        )
+                else:
+                    yield StreamProgress(
+                        stage="warning",
+                        message="Dart fixer not available, skipping automatic error fixing",
+                        progress_percent=92.0
+                    )
+                
+                # Check final result
+                final_analysis = await self._run_dart_analyze()
+                fix_success = len(final_analysis.errors) == 0
+                
+                if fix_success:
+                    yield StreamProgress(
+                        stage="fixing",
+                        message="Automatic error fixes completed successfully!",
+                        progress_percent=98.0,
+                        metadata={"fixes_successful": True}
+                    )
+                else:
+                    errors.append("Some errors could not be automatically fixed")
+                    yield StreamProgress(
+                        stage="warning",
+                        message="Some errors remain after automatic fixes",
+                        progress_percent=95.0,
+                        metadata={"fixes_partial": True}
+                    )
+            else:
+                yield StreamProgress(
+                    stage="validating", 
+                    message="No errors found in dart analysis - project is healthy!",
+                    progress_percent=95.0,
+                    metadata={"analysis_clean": True}
+                )
+
             # Final completion
             success = len(errors) == 0
             yield StreamProgress(
@@ -516,7 +608,8 @@ class CodeModificationService:
                     "deleted_files": deleted_files,
                     "commands_executed": shell_commands,
                     "errors": errors,
-                    "duration": time.time() - start_time
+                    "duration": time.time() - start_time,
+                    "analysis_performed": True
                 }
             )
             
@@ -1648,4 +1741,240 @@ class CodeModificationService:
                 print(f"Rolled back: {file_path}")
             except Exception as e:
                 print(f"Error rolling back {file_path}: {e}")
+    
+    async def _run_dart_analyze(self):
+        """
+        Run dart analyze and parse the results
+        
+        Returns:
+            DartAnalysisResult object with errors and warnings
+        """
+        try:
+            import subprocess
+            
+            # Run dart analyze with JSON output for easier parsing
+            cmd = ["dart", "analyze", "--format=json", "."]
+            
+            print(f"[CodeModifier] Running: {' '.join(cmd)} in {self.project_path}")
+            
+            result = await asyncio.create_subprocess_exec(
+                *cmd,
+                cwd=str(self.project_path),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await result.communicate()
+            
+            stdout_str = stdout.decode('utf-8')
+            stderr_str = stderr.decode('utf-8')
+            
+            print(f"[CodeModifier] Dart analyze return code: {result.returncode}")
+            print(f"[CodeModifier] Stdout length: {len(stdout_str)}")
+            print(f"[CodeModifier] Stderr length: {len(stderr_str)}")
+            
+            if stdout_str:
+                print(f"[CodeModifier] Stdout preview: {stdout_str[:200]}...")
+            if stderr_str:
+                print(f"[CodeModifier] Stderr preview: {stderr_str[:200]}...")
+            
+            # Parse the JSON output
+            analysis_result = self._parse_dart_analyze_output(
+                stdout_str,
+                stderr_str,
+                result.returncode
+            )
+            
+            if MONITORING_AVAILABLE:
+                logger.info(LogCategory.CODE_MOD, f"Dart analysis completed",
+                           context={
+                               "errors": len(analysis_result.errors),
+                               "warnings": len(analysis_result.warnings),
+                               "return_code": result.returncode
+                           })
+            
+            return analysis_result
+            
+        except Exception as e:
+            print(f"[CodeModifier] Error running dart analyze: {e}")
+            if MONITORING_AVAILABLE:
+                logger.error(LogCategory.CODE_MOD, f"Dart analyze execution failed: {e}")
+            
+            # Return empty result on error
+            return DartAnalysisResult(errors=[], warnings=[], success=False, error_message=str(e))
+    
+    def _parse_dart_analyze_output(self, stdout: str, stderr: str, return_code: int):
+        """
+        Parse dart analyze JSON output into structured result
+        
+        Args:
+            stdout: Standard output from dart analyze
+            stderr: Standard error from dart analyze
+            return_code: Process return code
+            
+        Returns:
+            DartAnalysisResult object
+        """
+        errors = []
+        warnings = []
+        
+        try:
+            if stdout.strip():
+                # Try to parse JSON output - dart analyze returns a single JSON object, not lines
+                import json
+                try:
+                    # First, try parsing as a complete JSON object
+                    json_data = json.loads(stdout.strip())
+                    
+                    # Handle the new dart analyze JSON format
+                    if 'diagnostics' in json_data:
+                        for diagnostic in json_data['diagnostics']:
+                            severity = diagnostic.get('severity', '').lower()
+                            message = diagnostic.get('problemMessage', '')
+                            file_path = diagnostic.get('location', {}).get('file', '')
+                            line_num = diagnostic.get('location', {}).get('range', {}).get('start', {}).get('line', 0)
+                            
+                            # Clean up file path to be relative
+                            if file_path and self.project_path:
+                                try:
+                                    file_path = str(Path(file_path).relative_to(self.project_path))
+                                except ValueError:
+                                    # If can't make relative, keep as is
+                                    pass
+                            
+                            issue_obj = DartAnalysisIssue(
+                                file_path=file_path,
+                                line=line_num,
+                                message=message,
+                                severity=severity,
+                                raw_output=str(diagnostic)
+                            )
+                            
+                            if severity in ['error', 'severe']:
+                                errors.append(issue_obj)
+                            elif severity in ['warning', 'info']:
+                                warnings.append(issue_obj)
+                        
+                        print(f"[CodeModifier] Parsed {len(errors)} errors and {len(warnings)} warnings from JSON")
+                        
+                except json.JSONDecodeError:
+                    # Fallback to line-by-line parsing for older format
+                    print("[CodeModifier] JSON parsing failed, trying line-by-line...")
+                    lines = stdout.strip().split('\n')
+                    for line in lines:
+                        if line.strip():
+                            try:
+                                issue = json.loads(line)
+                                severity = issue.get('severity', '').lower()
+                                message = issue.get('problemMessage', '')
+                                file_path = issue.get('location', {}).get('file', '')
+                                line_num = issue.get('location', {}).get('range', {}).get('start', {}).get('line', 0)
+                                
+                                issue_obj = DartAnalysisIssue(
+                                    file_path=file_path,
+                                    line=line_num,
+                                    message=message,
+                                    severity=severity,
+                                    raw_output=line
+                                )
+                                
+                                if severity in ['error', 'severe']:
+                                    errors.append(issue_obj)
+                                elif severity in ['warning', 'info']:
+                                    warnings.append(issue_obj)
+                                    
+                            except json.JSONDecodeError:
+                                # Fallback to text parsing for compilation errors
+                                if any(keyword in line.lower() for keyword in ['error:', 'expected', 'syntax error', 'compilation error']):
+                                    errors.append(DartAnalysisIssue(
+                                        file_path="unknown",
+                                        line=0,
+                                        message=line,
+                                        severity="error",
+                                        raw_output=line
+                                    ))
+            
+            # Parse stderr for additional errors
+            if stderr.strip():
+                for line in stderr.strip().split('\n'):
+                    if line.strip() and any(keyword in line.lower() for keyword in ['error:', 'expected', 'syntax error']):
+                        errors.append(DartAnalysisIssue(
+                            file_path="stderr",
+                            line=0,
+                            message=line.strip(),
+                            severity="error",
+                            raw_output=line
+                        ))
+            
+            # Special case: if dart analyze shows no errors but we have a non-zero return code,
+            # there might be compilation errors that weren't captured in JSON format
+            if return_code != 0 and len(errors) == 0:
+                # Try to run flutter analyze instead, which catches more compilation errors
+                print("[CodeModifier] dart analyze returned no errors but had non-zero exit code, checking compilation")
+                
+                # Run a quick compilation check
+                try:
+                    import subprocess
+                    check_result = subprocess.run(
+                        ["flutter", "analyze", "--no-pub"],
+                        cwd=str(self.project_path),
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+                    
+                    if check_result.stdout and any(keyword in check_result.stdout.lower() for keyword in ['error', 'expected', 'syntax']):
+                        for line in check_result.stdout.split('\n'):
+                            if any(keyword in line.lower() for keyword in ['error:', 'expected', 'syntax error']):
+                                errors.append(DartAnalysisIssue(
+                                    file_path="compilation_check",
+                                    line=0,
+                                    message=line.strip(),
+                                    severity="error",
+                                    raw_output=line
+                                ))
+                
+                except Exception as e:
+                    print(f"[CodeModifier] Flutter analyze check failed: {e}")
+        
+        except Exception as e:
+            print(f"[CodeModifier] Error parsing dart analyze output: {e}")
+            # Add a generic error if parsing fails
+            errors.append(DartAnalysisIssue(
+                file_path="parse_error",
+                line=0,
+                message=f"Failed to parse dart analyze output: {e}",
+                severity="error",
+                raw_output=stdout
+            ))
+        
+        success = return_code == 0 and len(errors) == 0
+        error_message = None if success else f"Found {len(errors)} compilation/analysis errors"
+        
+        return DartAnalysisResult(
+            errors=errors,
+            warnings=warnings,
+            success=success,
+            error_message=error_message
+        )
+    
+
+# Data classes for dart analysis results
+@dataclass
+class DartAnalysisIssue:
+    """Represents a single issue from dart analyze"""
+    file_path: str
+    line: int
+    message: str
+    severity: str  # 'error', 'warning', 'info'
+    raw_output: str
+
+
+@dataclass  
+class DartAnalysisResult:
+    """Represents the complete result of dart analyze"""
+    errors: List[DartAnalysisIssue]
+    warnings: List[DartAnalysisIssue]
+    success: bool
+    error_message: Optional[str] = None
     

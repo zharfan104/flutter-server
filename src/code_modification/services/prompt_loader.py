@@ -31,7 +31,7 @@ class PromptLoader:
             print(f"Warning: Prompts directory {self.prompts_dir} does not exist")
             return
         
-        for yaml_file in self.prompts_dir.glob("*.yaml"):
+        for yaml_file in self.prompts_dir.rglob("*.yaml"):
             try:
                 with open(yaml_file, 'r', encoding='utf-8') as f:
                     prompt_data = yaml.safe_load(f)
@@ -60,8 +60,8 @@ class PromptLoader:
             raise KeyError(f"Prompt '{prompt_name}' not found. Available prompts: {list(self._prompts_cache.keys())}")
         
         prompt_data = self._prompts_cache[prompt_name]
-        # Support legacy 'template' field for backward compatibility
-        return prompt_data.get('template', prompt_data.get('user_template', ''))
+        # Support legacy 'template' field and newer 'prompt' field for backward compatibility
+        return prompt_data.get('template', prompt_data.get('user_template', prompt_data.get('prompt', '')))
     
     def get_prompt_info(self, prompt_name: str) -> Dict[str, Any]:
         """
@@ -133,7 +133,7 @@ class PromptLoader:
         
         prompt_data = self._prompts_cache[prompt_name]
         # Support both new format and legacy format
-        return prompt_data.get('user_template', prompt_data.get('template', ''))
+        return prompt_data.get('user_template', prompt_data.get('template', prompt_data.get('prompt', '')))
     
     def format_user_prompt(self, prompt_name: str, **kwargs) -> str:
         """
